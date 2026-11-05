@@ -1,6 +1,6 @@
 # SPEC: Live traffic dashboard for `proxy.py`
 
-Status: **ready to build**. All design decisions are settled (§11).
+Status: **implementation plan proposed**. Section 13 specifies the next dashboard revision. Where it conflicts with §§4–11, §13 takes precedence; other requirements remain in force.
 
 ## 1. Goal
 
@@ -362,3 +362,215 @@ python3 proxy.py [--port 8041] [--dash-port 8042] [--upstream URL] [--verbose]
 
 At startup the proxy prints the proxy URL, the dashboard URL and the
 `ANTHROPIC_BASE_URL=… claude` line to run the agent with.
+
+
+## 13. Proposed dashboard revision: implementation plan
+
+This section is a handoff for future implementation, not a record of completed
+work. The present change is documentation only. Preserve the existing proxy
+forwarding, streaming, command-line options, ports, upstream configuration,
+credential masking, replay limits and standard-library-only operation. Keep a
+single self-contained HTML page without external dependencies. Browser updates
+must use the existing SSE `/events` connection, never polling or WebSockets.
+
+### 13.1 Two-pane layout and navigation
+
+Replace the expanding-card feed in §4 and D2 with two primary panes beneath the
+existing session header:
+
+- **Left: request list.** One compact summary per exchange, newest first by
+  original arrival order. Retain ID, time, thread, model, state, status, NEW and
+  REPLY summaries and key statistics. Later events update a row without moving
+  it. Place existing search and filters above this list or in a collapsible
+  controls area; do not introduce a third permanent content pane.
+- **Right: selected request detail.** Show the selected request ID, state and
+  the eight existing detail sections in §5, including readable conversation,
+  paired tools, changes, statistics and Raw. Add live events within Raw.
+  Details belong here rather than inside request-list rows.
+
+Each pane scrolls independently. Clearly highlight the selected row and expose
+its selected state to assistive technology. Clicking a row selects it. Select
+the first visible request only when there is no current selection. New arrivals
+must never automatically replace an existing selection. On narrow screens,
+stack the panes with an explicit way to return to the list, retaining state.
+
+`j`/`k` select the next/previous visible row; Enter or `o` focuses its details.
+`Home` scrolls the list to its newest row without changing selection. Cross-links
+select their destination and reveal it in the list. Filters do not silently
+replace selection: retain the details with a “hidden by filters” notice and a
+reveal action. Global expand/collapse controls apply to the selected request's
+detail sections; label their scope explicitly.
+
+### 13.2 Stable state and incremental rendering
+
+Maintain exchange data separately from view state. Store `selectedRequestId`,
+list scroll anchor, per-request detail scroll position, section open states,
+long-text expansion and JSON node folds. Use stable keys based on exchange ID,
+section name, block identity and JSON path rather than current DOM position.
+
+- Save detail scroll position when switching requests and restore it on return.
+  Switching must also restore all section and nested expansion states.
+- Insert new rows above a scrolled list by preserving the first visible row
+  and its pixel offset. At the top, allow new rows to appear normally. Show
+  “↑ N new requests” while scrolled away; activating it scrolls only the list.
+- Update only affected rows and detail regions, coalesced per animation frame.
+  Do not replace the whole detail pane on every delta. Preserve focus, text
+  selection and scroll anchors across stream and completion updates.
+- Appending to live raw output follows the tail only if the reader was already
+  at the bottom. Otherwise retain position and show a new-events indicator.
+- During SSE reset/replay, retain view state by exchange ID and restore it after
+  `replay_done`. Do not append duplicate replay entries. If the selected exchange
+  was evicted, show an explicit unavailable/evicted placeholder and let the user
+  choose another request. Prune obsolete view state to keep memory bounded.
+  State preservation is required within the current tab, including reconnects;
+  persistence across a full browser reload is not required.
+
+### 13.3 Live raw events and completion rendering
+
+Current code exposes assembled blocks live, but `renderRaw` makes the raw
+response available only after completion. Separate two debugging sources:
+
+1. **Dashboard event log:** display incoming exchange-scoped SSE event names,
+   receive order, timestamp when provided and expandable payloads immediately.
+   Include start, deltas, stops, errors and end events, even for unsupported APIs.
+   Label this as dashboard events; these normalized events are not the exact
+   upstream SSE stream. Keep connection/reset/replay notices separate.
+2. **Upstream raw response:** preserve the existing final raw text/JSON view,
+   copy control and explicit truncation marker. Do not claim exact upstream
+   bytes are available live from the current event protocol.
+
+On completion, render assembled model text as escaped Markdown and tool inputs
+as readable key/value fields plus expandable JSON. During streaming, show
+partial text and tool argument fragments as clearly labeled provisional text;
+do not repeatedly parse incomplete JSON or report it as a final invalid input.
+Finalize tool arguments on `block_stop` when complete input is supplied, or on
+`response_end` from authoritative assembled content. If final JSON is malformed,
+retain the fragment with a parse-error explanation. Failed/interrupted requests
+retain available partial content. Non-streaming replies receive the same final
+rendering; unsupported APIs retain generic details and Raw.
+
+Bound event-log memory per exchange and overall, with visible omitted-event
+counts. Lazy-render collapsed payloads. Reconnect replay must reconstruct a
+consistent log from retained events rather than duplicating the previous log.
+Current recorder compaction can discard block deltas after completion: label
+replayed logs as retained/compacted history rather than claiming completeness.
+Exact live upstream event capture would require a separately reviewed recorder
+protocol extension; it is not required by this revision.
+
+### 13.4 Request lifecycle
+
+Use the same explicit lifecycle label in list and details:
+
+| State | Trigger and presentation |
+|---|---|
+| Sending | Exchange started; no response yet. |
+| Streaming | Response started; no terminal event. Optional thinking/tool-input sublabel. |
+| Completed | `response_end` with no exchange failure and `aborted` false. |
+| Failed | HTTP status ≥400 or `exchange_error`, including unreachable upstream and stream errors. Preserve status, reason and available content. |
+| Interrupted | `response_end.aborted` true without an exchange failure. Preserve partial content and identify client closure. |
+
+Failure takes precedence over interruption; show an additional client-closed
+indicator when both occur. A failed tool result marks the tool and error summary
+but does not turn a successfully completed HTTP exchange into a transport failure.
+SSE disconnection means “reconnecting”, not proof that an upstream request was
+interrupted. Do not invent terminal states based on elapsed time. Terminal states
+must not regress when retained events are replayed.
+
+### 13.5 Tool identity and conversation rendering
+
+Define a normalized internal `call_id` without changing provider payloads:
+Anthropic reply `tool_use.id` and request `tool_result.tool_use_id` map to the
+same `call_id`; existing `block_start.tool_use_id` carries the call identifier.
+Keep original field names and values in Raw. This normalization does not add
+OpenAI API support or require a new field on the wire.
+
+Index calls/results by identity, never by tool name, array position or request
+adjacency. Keep exchange/thread provenance to detect collisions; ambiguous IDs
+must be labeled unresolved rather than paired across unrelated threads. Permit
+results to be indexed before their calls are available, and reconcile later.
+Deduplicate repeated history and replay by call identity and origin. Retain the
+first observed result origin so resent history does not change its link/delay.
+
+Show call and result side by side, stacking on narrow screens. Include call ID,
+name, readable finalized arguments, result/error, source request links and delay.
+Support multiple calls in one reply, interleaved threads and results in a later
+request. Unknown calls show an orphan-result label. Pending calls show “waiting
+for result”; confirmed interruption or a subsequent same-thread continuation
+without a result shows “no result received”. A late result must resolve that
+placeholder. Eviction must be identified separately from a missing result.
+
+Keep conversation role/kind labels, prompts, reminders, thinking and media
+metadata from §6. New messages remain distinct from prior history; rewrites
+remain explicit. Show full tool content once with links from repeated views.
+
+### 13.6 Expandable raw JSON
+
+Provide independent expandable views for masked headers, request body, response
+JSON, assembled blocks, tool arguments/results, error payloads and live event
+payloads. Use pretty-printed, syntax-colored trees with child counts, stable
+JSON-path folds, long-string expansion and full-value copy controls. Open to
+depth two by default; defer collapsed children until expanded. Distinguish null,
+empty, unavailable, malformed and truncated data. Preserve non-JSON text as text.
+Escape all untrusted content; never render raw payload HTML. Existing credential
+masking must apply equally to the event log and copy output.
+
+### 13.7 Implementation sequence for the teammate
+
+1. Extract/organize the existing event reducer and view-state store. Keep the
+   SSE connection and existing exchange IDs; define normalized call identity
+   and lifecycle derivation with deterministic event fixtures.
+2. Build the independently scrolling list/detail shell. Reuse existing summary,
+   conversation, statistics, diff and JSON renderers. Implement selection,
+   keyboard navigation and per-request expansion/scroll restoration.
+3. Add bounded live dashboard-event logs and incremental updates. Implement
+   raw-tail behavior and provisional-to-final content rendering.
+4. Harden call/result reconciliation, failures, interruption, filters, eviction
+   and replay restoration. Ensure completion only refreshes affected regions.
+5. Run the automated and browser checks below. Document any recorder protocol
+   change separately if one becomes necessary; forwarding changes are out of
+   scope. No new runtime or test dependencies are required.
+
+### 13.8 Acceptance criteria and validation plan
+
+These checks supersede the expanding-card interactions in §10; its traffic,
+security, statistics and isolation checks still apply.
+
+1. Start `python3 proxy.py`, open `http://localhost:8042`, and send traffic using
+   `ANTHROPIC_BASE_URL=http://localhost:8041 claude`. Verify a newest-first list
+   and a selected-request detail pane with all eight existing sections.
+2. Select an older request, expand System and a nested JSON node, and scroll
+   both panes. Generate a burst of at least 20 requests/deltas. Selection,
+   expansion, focus and visible scroll anchors remain unchanged (within one
+   pixel absent an explicit user scroll). The new-request indicator reveals
+   the newest rows without replacing selection.
+3. Switch between two requests and back. Each restores its detail scroll,
+   section folds and JSON folds. Filtering out the selected row leaves its
+   details visible with the hidden-by-filters notice.
+4. During a slow stream, see dashboard events before `response_end`. Scrolling
+   upward stops tail following; returning to the bottom resumes it. After
+   completion, model Markdown and finalized tool arguments are readable while
+   raw payloads remain expandable. Invalid final arguments retain their text.
+5. Exercise success, HTTP error, stream error and client cancellation fixtures.
+   Verify Completed, Failed and Interrupted labels and preserved partial data.
+   Disconnect only the browser SSE connection: show reconnecting without
+   falsely marking requests interrupted.
+6. Replay fixtures with two concurrent threads, repeated tool names, multiple
+   call IDs, out-of-order results and repeated history. Every result matches
+   its call ID once; collisions/orphans remain explicit. Failed, missing and
+   late results update both originating and referencing views correctly.
+7. Reconnect mid-stream and after completion. Restore selection and folds,
+   avoid duplicate rows/events/pairs, and label compacted raw history. Evict the
+   selected exchange and verify an explicit placeholder rather than a jump.
+8. Expand/copy large JSON, long strings, errors and plain-text responses.
+   Verify correct full retained values, masking, truncation indicators and
+   escaped HTML, including payloads containing script tags.
+9. Add deterministic reducer/pairing tests using the repository's available
+   tools or dependency-free fixtures. Cover terminal-state precedence,
+   partial/final arguments, replay and identity collisions. Add DOM/browser
+   checks for selection and anchoring where an existing runner is available;
+   otherwise record the manual steps above and their results.
+10. Use a local standard-library mock upstream to compare forwarded request
+    bodies and streamed response bytes before/after the future implementation.
+    Verify existing CLI options, offline operation, replay limits and a slow
+    or closed dashboard do not alter or delay relay traffic. Confirm the
+    browser network panel uses SSE only, with no polling or WebSockets.
