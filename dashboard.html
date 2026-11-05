@@ -17,10 +17,9 @@
   --sec-reply: #1baf7a; --sec-changes: #eb6834; --sec-stats: #008300; --sec-raw: #6b6a64;
   --series-1: #2a78d6;
   --diff-add: #e3f6e8; --diff-del: #fbe6e6;
-  --fresh: #fff3c4;
+  --fresh: #fff3c4; --sel: #e4eefb;
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
   --sans: system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, sans-serif;
-  --hh: 52px;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
@@ -32,7 +31,7 @@
     --bad: #ee6b6a; --bad-bg: #3a1d1c; --ok: #5cc27a; --warn: #e0a33a; --warn-bg: #3a2d12;
     --sec-system: #9085e9; --sec-tools: #c98500; --sec-history: #6d6c66; --sec-new: #3987e5;
     --sec-reply: #199e70; --sec-changes: #d95926; --sec-stats: #2f9a2f; --sec-raw: #9a998f;
-    --series-1: #3987e5; --diff-add: #1c3324; --diff-del: #3d2020; --fresh: #3d3410;
+    --series-1: #3987e5; --diff-add: #1c3324; --diff-del: #3d2020; --fresh: #3d3410; --sel: #1f2c3d;
   }
 }
 :root[data-theme="dark"] {
@@ -44,11 +43,12 @@
   --bad: #ee6b6a; --bad-bg: #3a1d1c; --ok: #5cc27a; --warn: #e0a33a; --warn-bg: #3a2d12;
   --sec-system: #9085e9; --sec-tools: #c98500; --sec-history: #6d6c66; --sec-new: #3987e5;
   --sec-reply: #199e70; --sec-changes: #d95926; --sec-stats: #2f9a2f; --sec-raw: #9a998f;
-  --series-1: #3987e5; --diff-add: #1c3324; --diff-del: #3d2020; --fresh: #3d3410;
+  --series-1: #3987e5; --diff-add: #1c3324; --diff-del: #3d2020; --fresh: #3d3410; --sel: #1f2c3d;
 }
 * { box-sizing: border-box; }
-html { overflow-anchor: none; }
-body { margin: 0; background: var(--bg); color: var(--text); font: 13px/1.45 var(--sans); }
+html, body, #listScroll, #detailScroll, .logbox { overflow-anchor: none; }  /* anchoring is done by keepAnchor() */
+html, body { height: 100%; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 13px/1.45 var(--sans); display: flex; flex-direction: column; overflow: hidden; }
 a, .link { color: var(--link); cursor: pointer; text-decoration: none; }
 a:hover, .link:hover { text-decoration: underline; }
 button { font: inherit; color: inherit; background: var(--panel2); border: 1px solid var(--border); border-radius: 5px; padding: 2px 8px; cursor: pointer; }
@@ -60,21 +60,20 @@ pre { margin: 0; white-space: pre-wrap; word-break: break-word; }
 .bad { color: var(--bad); }
 .ok { color: var(--ok); }
 .warn { color: var(--warn); }
+kbd { font-family: var(--mono); font-size: 11px; border: 1px solid var(--border2); border-bottom-width: 2px; border-radius: 3px; padding: 0 3px; }
 
 /* ---------- header ---------- */
-#top { position: sticky; top: 0; z-index: 20; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px;
-  padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--border); }
+#top { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--border); }
 #conn { font-weight: 600; }
 #conn.live::before { content: "● "; color: var(--ok); }
 #conn.down::before { content: "● "; color: var(--bad); }
-#inflight { color: var(--muted); }
-#totals { color: var(--muted); }
+#inflight, #totals { color: var(--muted); }
 #totals b { color: var(--text); font-weight: 600; }
 .spacer { flex: 1; }
 #errBtn.has { background: var(--bad-bg); border-color: var(--bad); color: var(--bad); font-weight: 600; }
 #errBtn.active { outline: 2px solid var(--bad); }
-#statsPanel { position: sticky; top: var(--hh); z-index: 15; max-height: 60vh; overflow: auto; background: var(--panel);
-  border-bottom: 1px solid var(--border); padding: 12px 16px; display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
+#statsPanel { flex: none; max-height: 45vh; overflow: auto; background: var(--panel); border-bottom: 1px solid var(--border); padding: 12px 16px;
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
 #statsPanel[hidden] { display: none; }
 #statsPanel h3 { margin: 0 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
 table.t { border-collapse: collapse; width: 100%; font-size: 12px; }
@@ -85,43 +84,59 @@ table.t tr.click { cursor: pointer; }
 table.t tr.click:hover td { background: var(--panel2); }
 table.t tr.sel td { background: var(--panel2); font-weight: 600; }
 
-/* ---------- layout ---------- */
-#layout { display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: 16px; padding: 12px 16px 40px; }
-#side { position: sticky; top: calc(var(--hh) + 12px); align-self: start; max-height: calc(100vh - var(--hh) - 24px); overflow: auto;
-  background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; font-size: 12px; }
-#side h4 { margin: 10px 0 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
-#side h4:first-child { margin-top: 0; }
-#side label { display: flex; align-items: center; gap: 6px; padding: 1px 0; cursor: pointer; }
-#side .toolrow { display: flex; justify-content: space-between; gap: 6px; padding: 1px 4px; border-radius: 4px; cursor: pointer; }
-#side .toolrow:hover { background: var(--panel2); }
-#side .toolrow.sel { background: var(--panel2); outline: 1px solid var(--border2); font-weight: 600; }
-#side input[type=search] { width: 100%; font: inherit; color: inherit; background: var(--bg); border: 1px solid var(--border); border-radius: 5px; padding: 3px 6px; }
-#side .keys { color: var(--faint); line-height: 1.7; }
-kbd { font-family: var(--mono); font-size: 11px; border: 1px solid var(--border2); border-bottom-width: 2px; border-radius: 3px; padding: 0 3px; }
-main { min-width: 0; }
-#pill { position: fixed; top: calc(var(--hh) + 8px); left: 50%; transform: translateX(-50%); z-index: 10; display: block; background: var(--acc-prompt); color: #fff;
+/* ---------- two panes ---------- */
+#panes { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(340px, 40%) minmax(0, 1fr); }
+.pane { min-height: 0; min-width: 0; display: flex; flex-direction: column; }
+#listPane { border-right: 1px solid var(--border); position: relative; }
+#controls { flex: none; padding: 8px 12px; border-bottom: 1px solid var(--border); background: var(--panel); font-size: 12px; }
+.ctlbar { display: flex; gap: 6px; align-items: center; }
+.ctlbar input[type=search] { flex: 1; min-width: 0; font: inherit; color: inherit; background: var(--bg); border: 1px solid var(--border); border-radius: 5px; padding: 3px 6px; }
+#ctlCount:empty { display: none; }
+#ctlCount { color: var(--acc-prompt); font-weight: 600; }
+#ctlBody { padding-top: 6px; max-height: 40vh; overflow: auto; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 4px 16px; }
+#ctlBody[hidden] { display: none; }
+#ctlBody h4 { margin: 6px 0 3px; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+#ctlBody label { display: flex; align-items: center; gap: 6px; padding: 1px 0; cursor: pointer; }
+#ctlBody .sesshead { font-weight: 600; margin-top: 4px; }
+#ctlBody .toolrow { display: flex; justify-content: space-between; gap: 6px; padding: 1px 4px; border-radius: 4px; cursor: pointer; }
+#ctlBody .toolrow:hover { background: var(--panel2); }
+#ctlBody .toolrow.sel { background: var(--panel2); outline: 1px solid var(--border2); font-weight: 600; }
+#ctlBody .keys { color: var(--faint); line-height: 1.7; }
+#listScroll { flex: 1; min-height: 0; overflow: auto; padding: 8px 10px 24px; }
+#list:focus { outline: none; }
+#pill { position: absolute; top: 52px; left: 50%; transform: translateX(-50%); z-index: 10; background: var(--acc-prompt); color: #fff;
   border: none; border-radius: 999px; padding: 4px 14px; font-weight: 600; box-shadow: 0 2px 8px rgba(0,0,0,.2); }
 #pill[hidden] { display: none; }
-#empty { color: var(--muted); padding: 40px; text-align: center; }
+#empty { color: var(--muted); padding: 30px 10px; text-align: center; }
 #evictNote { color: var(--faint); text-align: center; padding: 12px; }
-@media (max-width: 820px) {
-  #layout { grid-template-columns: minmax(0, 1fr); padding: 12px 16px 40px; }
-  #side { position: static; max-height: none; }
+#detailHead { flex: none; padding: 8px 14px; border-bottom: 1px solid var(--border); background: var(--panel); display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+#detailHead .big { font-size: 15px; font-weight: 700; }
+#detailNotice:empty { display: none; }
+#detailNotice { flex: none; margin: 8px 14px 0; padding: 5px 10px; border-radius: 5px; background: var(--warn-bg); border: 1px solid var(--warn); color: var(--warn); font-weight: 600; display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+#detailScroll { flex: 1; min-height: 0; overflow: auto; padding: 4px 14px 30px; }
+#detailScroll:focus { outline: none; }
+.placeholder { color: var(--muted); padding: 40px 10px; text-align: center; }
+#backBtn { display: none; }
+@media (max-width: 900px) {
+  #panes { grid-template-columns: minmax(0, 1fr); }
+  #listPane { border-right: none; }
+  body.show-detail #listPane { display: none; }
+  body:not(.show-detail) #detailPane { display: none; }
+  #backBtn { display: inline-block; }
 }
 
-/* ---------- cards ---------- */
-.card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 8px; scroll-margin-top: calc(var(--hh) + 12px); }
-.card.fresh { animation: fresh 1.6s ease-out; }
-@keyframes fresh { from { background: var(--fresh); } to { background: var(--panel); } }
-.card.focused { outline: 2px solid var(--acc-prompt); outline-offset: 1px; }
-.card.flash { animation: fresh 1.2s ease-out; }
-.card.haserr { border-left: 4px solid var(--bad); }
-.card.expanded { border-color: var(--border2); }
-.row { padding: 3px 12px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; cursor: pointer; min-width: 0; }
-.row.head { padding-top: 7px; }
-.row.replyrow { padding-bottom: 7px; }
-.rowlab { font-size: 10px; font-weight: 700; letter-spacing: .06em; color: var(--faint); width: 44px; flex: none; }
-.kind-nonmsg .row.head, .kind-generic .row.head { padding-bottom: 7px; }
+/* ---------- list rows ---------- */
+.item { background: var(--panel); border: 1px solid var(--border); border-radius: 7px; margin-bottom: 6px; cursor: pointer; user-select: text; }
+.item.fresh { animation: fresh 1.6s ease-out; }
+@keyframes fresh { from { background: var(--fresh); } }
+.item.flash { animation: fresh 1.2s ease-out; }
+.item.haserr { border-left: 4px solid var(--bad); }
+.item.sel { background: var(--sel); border-color: var(--acc-prompt); box-shadow: inset 3px 0 0 var(--acc-prompt); }
+.row { padding: 2px 10px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 3px 8px; min-width: 0; }
+.row.head { padding-top: 6px; }
+.row.replyrow { padding-bottom: 6px; }
+.rowlab { font-size: 10px; font-weight: 700; letter-spacing: .06em; color: var(--faint); width: 40px; flex: none; }
+.kind-nonmsg .row.head, .kind-generic .row.head { padding-bottom: 6px; }
 .kind-nonmsg .newrow, .kind-nonmsg .replyrow, .kind-generic .newrow, .kind-generic .replyrow { display: none; }
 .kind-nonmsg { opacity: .85; }
 .id { font-weight: 700; font-variant-numeric: tabular-nums; }
@@ -133,21 +148,19 @@ main { min-width: 0; }
 .chip.state-live { color: var(--acc-prompt); border-color: var(--acc-prompt); }
 .ttag { display: inline-block; padding: 0 6px; border-radius: 4px; font-size: 11.5px; font-weight: 600; border: 1px solid var(--tc); color: var(--text);
   background: color-mix(in srgb, var(--tc) 14%, transparent); white-space: nowrap; }
+.stag { display: inline-block; padding: 0 5px; border-radius: 4px; font-size: 11px; font-family: var(--mono); border: 1px dashed var(--border2); color: var(--muted); white-space: nowrap; }
 .num { font-variant-numeric: tabular-nums; color: var(--muted); white-space: nowrap; }
 .sumtxt { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
-.sumrow { display: flex; flex-wrap: wrap; gap: 4px 10px; min-width: 0; flex: 1; }
+.sumrow { display: flex; flex-wrap: wrap; gap: 3px 8px; min-width: 0; flex: 1; }
 .tchip { display: inline-flex; gap: 4px; align-items: baseline; padding: 0 6px; border-radius: 4px; border: 1px solid var(--acc-call);
-  font-size: 12px; max-width: 420px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  font-size: 12px; max-width: 360px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .tchip .arg { font-family: var(--mono); font-size: 11.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
 .tchip.err { border-color: var(--bad); background: var(--bad-bg); }
 .cursor { display: inline-block; width: .55em; height: 1.05em; vertical-align: text-bottom; background: var(--acc-model); animation: blink 1s steps(2) infinite; margin-left: 1px; }
 @keyframes blink { 50% { opacity: 0; } }
 .errbanner:empty { display: none; }
-.errbanner { margin: 4px 12px 8px; padding: 5px 10px; background: var(--bad-bg); color: var(--bad); border: 1px solid var(--bad); border-radius: 5px; font-weight: 600; }
+.errbanner { margin: 4px 10px 7px; padding: 4px 9px; background: var(--bad-bg); color: var(--bad); border: 1px solid var(--bad); border-radius: 5px; font-weight: 600; }
 .errbanner div + div { margin-top: 2px; }
-.body { border-top: 1px solid var(--border); padding: 8px 12px 12px; cursor: auto; }
-.body:empty { display: none; }
-.toolbar { display: flex; gap: 6px; justify-content: flex-end; margin-bottom: 6px; }
 
 /* ---------- sections ---------- */
 .sec { border: 1px solid var(--border); border-left: 4px solid var(--acc); border-radius: 6px; margin: 8px 0; background: var(--panel); }
@@ -170,9 +183,11 @@ main { min-width: 0; }
 .lt pre.prose { font-family: var(--sans); font-size: 13px; }
 .more { margin-top: 4px; font-size: 11.5px; padding: 0 8px; color: var(--link); background: transparent; }
 .copy { font-size: 11px; padding: 0 6px; }
+.prov { font-size: 10.5px; font-weight: 600; color: var(--warn); border: 1px solid var(--warn); border-radius: 3px; padding: 0 4px; }
 
 /* ---------- message vocabulary ---------- */
 .msgs { display: flex; flex-direction: column; gap: 6px; }
+.blk { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .msg { border-left: 3px solid var(--acc); padding: 3px 10px 4px; min-width: 0; }
 .mlabel { font-size: 11px; font-weight: 700; color: var(--muted); letter-spacing: .03em; margin-bottom: 2px; display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
 .k-prompt { --acc: var(--acc-prompt); background: color-mix(in srgb, var(--acc-prompt) 6%, transparent); }
@@ -195,17 +210,18 @@ body.hide-reminders .k-reminder, body.hide-reminders .sum-reminder { display: no
 /* ---------- tool call beside result ---------- */
 .pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); border: 1px solid var(--border); border-radius: 6px; margin: 2px 0 2px 8px; }
 .pair.err { border-color: var(--bad); box-shadow: 0 0 0 1px var(--bad); }
-.pair.hl { outline: 2px solid var(--acc-call); outline-offset: 1px; }
 .pcall, .pres { padding: 5px 10px 7px; min-width: 0; }
 .pcall { border-left: 3px solid var(--acc-call); border-radius: 5px 0 0 5px; }
 .pres { border-left: 1px solid var(--border); background: color-mix(in srgb, var(--acc-result) 5%, transparent); }
 .pair.err .pres { background: var(--bad-bg); }
 .phead { font-size: 12px; font-weight: 650; margin-bottom: 3px; display: flex; gap: 6px; flex-wrap: wrap; align-items: baseline; }
 .phead .sub { font-weight: 400; color: var(--muted); }
+.cid { font-family: var(--mono); font-size: 10.5px; color: var(--faint); font-weight: 400; }
 .kv { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 1px 8px; font-size: 12px; }
 .kv .k { color: var(--muted); font-family: var(--mono); font-size: 11.5px; }
 .waiting { color: var(--muted); font-style: italic; }
-@media (max-width: 900px) { .pair { grid-template-columns: minmax(0, 1fr); } .pres { border-left: none; border-top: 1px solid var(--border); } }
+@container (max-width: 640px) { .pair { grid-template-columns: minmax(0, 1fr); } .pres { border-left: none; border-top: 1px solid var(--border); } }
+#detailScroll { container-type: inline-size; }
 
 /* ---------- json ---------- */
 .json { font-family: var(--mono); font-size: 12px; position: relative; background: var(--bg); border: 1px solid var(--border); border-radius: 5px; padding: 4px 8px; overflow-x: auto; }
@@ -218,7 +234,18 @@ body.hide-reminders .k-reminder, body.hide-reminders .sum-reminder { display: no
 .js { color: var(--ok); }
 .jn { color: var(--acc-call); }
 .jb { color: var(--acc-prompt); }
-.jcount { color: var(--faint); font-style: italic; }
+.jcount, .jnote { color: var(--faint); font-style: italic; }
+
+/* ---------- event log ---------- */
+.lognote { font-size: 11.5px; color: var(--warn); margin: 2px 0 4px; }
+.logbox { max-height: 340px; overflow: auto; border: 1px solid var(--border); border-radius: 5px; background: var(--bg); font-family: var(--mono); font-size: 11.5px; padding: 2px 6px; }
+.logrow .foldhead { gap: 2px 8px; }
+.logrow .seq { color: var(--faint); min-width: 3.5em; text-align: right; }
+.logrow .lt0 { color: var(--faint); min-width: 5em; }
+.logrow .ev { font-weight: 600; }
+.logrow .ev.e-err { color: var(--bad); }
+.logrow .ev.e-end { color: var(--ok); }
+.lognew { margin-top: 4px; font-size: 11.5px; }
 
 /* ---------- diff ---------- */
 .diff { font-family: var(--mono); font-size: 12px; border: 1px solid var(--border); border-radius: 5px; overflow-x: auto; }
@@ -236,7 +263,7 @@ body.hide-reminders .k-reminder, body.hide-reminders .sum-reminder { display: no
 .chart svg { display: block; width: 100%; overflow: visible; }
 .chart .bar { fill: var(--series-1); }
 .chart .hit { fill: transparent; cursor: pointer; }
-.chart .hit:hover + .bar, .chart .bar.hov { opacity: .75; }
+.chart .hit:hover + .bar { opacity: .75; }
 .chart .axis { stroke: var(--border2); stroke-width: 1; }
 .chart .axl { fill: var(--muted); font-size: 10.5px; font-family: var(--sans); }
 #tip { position: fixed; z-index: 50; pointer-events: none; background: var(--panel); border: 1px solid var(--border2); border-radius: 5px; padding: 4px 8px; font-size: 12px; box-shadow: 0 2px 8px rgba(0,0,0,.18); }
@@ -251,33 +278,48 @@ body.hide-reminders .k-reminder, body.hide-reminders .sum-reminder { display: no
   <span id="inflight"></span>
   <span class="spacer"></span>
   <span id="totals"></span>
-  <button id="errBtn" title="Show only requests with errors (e / Shift+E to jump)">Errors 0</button>
+  <button id="errBtn" title="Show only requests with errors (e / Shift+E: next / previous error)">Errors 0</button>
   <button id="statsBtn">Stats ▾</button>
-  <button id="expandAll" title="Expand every visible card">Expand all</button>
-  <button id="collapseAll" title="Collapse every card">Collapse all</button>
   <button id="themeBtn" title="Theme: auto / light / dark">◐ auto</button>
 </header>
 <div id="statsPanel" hidden></div>
-<div id="layout">
-  <aside id="side">
-    <h4>Search</h4>
-    <input id="search" type="search" placeholder="text in new messages / reply  ( / )">
-    <div id="sideDyn"></div>
-    <h4>Kinds</h4>
-    <label><input type="checkbox" id="kThinking" checked> 💭 thinking</label>
-    <label><input type="checkbox" id="kReminders" checked> 🔔 reminders</label>
-    <h4>Other</h4>
-    <label><input type="checkbox" id="fErrors"> ⚠ errors only</label>
-    <label><input type="checkbox" id="fNonMsg"> non-message requests <span id="nonMsgCount" class="faint"></span></label>
-    <h4>Keys</h4>
-    <div class="keys"><kbd>j</kbd>/<kbd>k</kbd> next/prev · <kbd>o</kbd> open<br><kbd>Home</kbd> newest · <kbd>/</kbd> search<br><kbd>e</kbd>/<kbd>E</kbd> next/prev error</div>
-  </aside>
-  <main>
+<div id="panes">
+  <section id="listPane" class="pane" aria-label="Requests">
+    <div id="controls">
+      <div class="ctlbar">
+        <input id="search" type="search" placeholder="Search new messages and replies  ( / )" aria-label="Search">
+        <button id="ctlToggle" aria-expanded="false" aria-controls="ctlBody">Filters ▾</button>
+        <span id="ctlCount"></span>
+      </div>
+      <div id="ctlBody" hidden>
+        <div id="ctlThreads"></div>
+        <div id="ctlTools"></div>
+        <div>
+          <h4>Kinds</h4>
+          <label><input type="checkbox" id="kThinking" checked> 💭 thinking</label>
+          <label><input type="checkbox" id="kReminders" checked> 🔔 reminders</label>
+          <h4>Other</h4>
+          <label><input type="checkbox" id="fErrors"> ⚠ errors only</label>
+          <label><input type="checkbox" id="fNonMsg"> non-message requests <span id="nonMsgCount" class="faint"></span></label>
+        </div>
+        <div>
+          <h4>Keys</h4>
+          <div class="keys"><kbd>j</kbd>/<kbd>k</kbd> next/prev request<br><kbd>Enter</kbd>/<kbd>o</kbd> focus details<br><kbd>Home</kbd> newest · <kbd>/</kbd> search<br><kbd>e</kbd>/<kbd>E</kbd> next/prev error</div>
+        </div>
+      </div>
+    </div>
     <button id="pill" hidden>↑ 0 new requests</button>
-    <div id="feed"></div>
-    <div id="empty">Waiting for traffic… start the agent with <code>ANTHROPIC_BASE_URL=http://localhost:8041 claude</code></div>
-    <div id="evictNote"></div>
-  </main>
+    <div id="listScroll">
+      <div id="list" role="listbox" tabindex="0" aria-label="Requests, newest first"></div>
+      <div id="empty">Waiting for traffic… start the agent with <code>ANTHROPIC_BASE_URL=http://localhost:8041 claude</code></div>
+      <div id="evictNote"></div>
+    </div>
+  </section>
+  <section id="detailPane" class="pane" aria-label="Selected request">
+    <div id="detailHead"><span class="muted">No request selected</span></div>
+    <div id="detailNotice"></div>
+    <div id="detailScroll" tabindex="-1"><div id="detailBody"><div class="placeholder">Select a request in the list.</div></div></div>
+  </section>
 </div>
 <div id="tip" hidden></div>
 <div id="toast" hidden></div>
@@ -317,6 +359,10 @@ const trunc = (s, n) => s.length > n ? s.slice(0, n - 1) + '…' : s;
 const utf8len = s => { try { return new TextEncoder().encode(s).length; } catch { return s.length; } };
 const shortModel = m => m ? m.replace(/^claude-/, '').replace(/-\d{8}$/, '') : '?';
 const span = (cls, text, title) => h('span', { class: cls, title }, text);
+const hget = (hs, n) => ((hs || []).find(([k]) => String(k).toLowerCase() === n) || [])[1];
+// Decode a JSON string-literal fragment without parsing JSON (used on partial tool input).
+const unescJson = s => s.replace(/\\$/, '').replace(/\\u([0-9a-fA-F]{4})/g, (m, x) => String.fromCharCode(parseInt(x, 16)))
+  .replace(/\\(["\\/bfnrt])/g, (m, c) => ({ b: '\b', f: '\f', n: '\n', r: '\r', t: '\t' }[c] ?? c));
 
 function hash(str) {
   let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
@@ -368,33 +414,39 @@ function copyText(text) {
 }
 const copyBtn = (getText, label = 'copy') => h('button', { class: 'copy', onclick: e => { e.stopPropagation(); copyText(getText()); } }, label);
 let toastTimer = 0;
-function toast(msg) { const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => t.hidden = true, 1400); }
+function toast(msg) { const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => t.hidden = true, 1600); }
 
 // =====================================================================
-// State
+// State. Exchange data (S) is kept apart from view state (V, UI, F).
 // =====================================================================
 const S = {
-  ex: new Map(), threads: new Map(), seq: { agent: 0, side: 0, thread: 0 },
-  tools: new Map(), agentCalls: [], prices: {}, pricesAsOf: '', evicted: 0,
-  replaying: false, pending: 0, focus: null, dirty: new Map(), sideDirty: true, colorSlot: 1,
+  ex: new Map(), threads: new Map(), sessions: new Map(),
+  tools: new Map(),        // call_id -> call/result record (see registerCall / setResult)
+  agentCalls: [], prices: {}, pricesAsOf: '', evicted: 0,
+  replaying: false, pending: 0, dirty: new Map(), sideDirty: true, colorSlot: 0,
+  logSeq: 0, logTotal: 0,
 };
-const UI = new Map();   // UI open/closed state, survives re-renders and re-syncs
+// View state survives SSE reconnects and replays; it is keyed by exchange ID, never by DOM position.
+const V = { selected: null, rendered: null, detailScroll: new Map(), listAnchor: null, narrowAnchor: null };
+const UI = new Map();   // open/closed state of sections, folds, long texts and JSON nodes
 const isOpen = (k, d) => UI.has(k) ? UI.get(k) : d;
 const F = { groups: new Map(), tools: new Set(), errorsOnly: false, showNonMsg: false, search: '', force: new Set() };
 const PALETTE = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#6250d6', '#e34948'];
 const NEUTRAL = '#8f8e86';
 const ARG = { Bash: 'command', Read: 'file_path', Edit: 'file_path', Write: 'file_path', MultiEdit: 'file_path', NotebookEdit: 'notebook_path',
   Grep: 'pattern', Glob: 'pattern', Agent: 'description', Task: 'description', WebFetch: 'url', WebSearch: 'query' };
+const LOG_PER_EX = 1500, LOG_TOTAL = 60000;
 
 function mainArg(name, input, partial) {
-  if (input && typeof input === 'object') {
+  if (input && typeof input === 'object' && !('_partial_json' in input)) {
     let v = ARG[name] ? input[ARG[name]] : undefined;
     if (v == null) v = Object.values(input).find(x => typeof x === 'string' && x.length <= 200);
     return v == null ? '' : firstLine(String(v));
   }
-  if (partial && ARG[name]) {
-    const m = partial.match(new RegExp('"' + ARG[name] + '"\\s*:\\s*"((?:[^"\\\\]|\\\\.)*)'));
-    if (m) { try { return firstLine(JSON.parse('"' + m[1].replace(/\\$/, '') + '"')); } catch { return firstLine(m[1]); } }
+  const pj = input?._partial_json ?? partial;
+  if (pj && ARG[name]) {
+    const m = pj.match(new RegExp('"' + ARG[name] + '"\\s*:\\s*"((?:[^"\\\\]|\\\\.)*)'));
+    if (m) return firstLine(unescJson(m[1]));
   }
   return '';
 }
@@ -421,7 +473,7 @@ const modelOf = ex => ex.resp?.model || ex.request?.model;
 const costOf = ex => costParts(modelOf(ex), ex.resp?.usage)?.total ?? null;
 
 // =====================================================================
-// Event handling
+// Event reducer
 // =====================================================================
 function checkVersion(d) {
   // The proxy restarted, or dashboard.html changed on disk: this page is stale, start over.
@@ -431,35 +483,38 @@ function checkVersion(d) {
   setTimeout(() => location.reload(), 300);
   return false;
 }
+
 function handle(name, d) {
   if (name === 'ping') { checkVersion(d); return; }
   if (name === 'reset') { if (!checkVersion(d)) return; return onReset(d); }
-  if (name === 'replay_done') { S.replaying = false; scheduleFlush(); return; }
+  if (name === 'replay_done') return onReplayDone();
   if (name === 'evicted') return onEvicted(d);
   if (name === 'exchange_start') return onStart(d);
   const ex = S.ex.get(d.id);
   if (!ex) return;  // evicted while in flight
+  logEvent(ex, name, d);
+  if (ex.done && name.startsWith('block')) { markDirty(ex, 'log'); return; } // stale stream event after the end: never regress
   if (name === 'response_start') {
     ex.resp = Object.assign(ex.resp || {}, Object.fromEntries(Object.entries({
       status: d.status, reason: d.reason, headers: d.headers, model: d.model, message_id: d.message_id, usage: d.usage,
     }).filter(([, v]) => v != null)));
     if (!ex.resp.tStart) ex.resp.tStart = d.t;
-    markDirty(ex, 'head', 'reply', 'stats');
+    markDirty(ex, 'rows', 'dhead', 'reply', 'stats', 'log');
   } else if (name === 'block_start') {
     const b = { type: d.type, name: d.name, id: d.tool_use_id, text: d.text || '', thinking: d.thinking || '', data: d.data, partial: '', done: false };
     ex.blocks[d.index] = b;
     if (b.type === 'tool_use' && b.id) registerCall(ex, b);
-    markDirty(ex, 'head', 'reply');
+    markDirty(ex, 'rows', 'dhead', 'reply', 'log');
   } else if (name === 'block_delta') {
     const b = ex.blocks[d.index] || (ex.blocks[d.index] = { type: 'text', text: '', thinking: '', partial: '', done: false });
     if (d.text != null) b.text += d.text;
     if (d.thinking != null) b.thinking += d.thinking;
     if (d.partial_json != null) b.partial += d.partial_json;
-    markDirty(ex, 'head', 'reply');
+    markDirty(ex, 'rows', 'reply', 'log');
   } else if (name === 'block_stop') {
     const b = ex.blocks[d.index];
-    if (b) { b.done = true; if (d.input !== undefined) b.input = d.input; }
-    markDirty(ex, 'head', 'reply');
+    if (b) { b.done = true; b.stopped = true; if (d.input !== undefined) b.input = d.input; }
+    markDirty(ex, 'rows', 'dhead', 'reply', 'log');
   } else if (name === 'response_end') {
     Object.assign(ex.resp || (ex.resp = {}), {
       status: d.status, model: d.model || ex.resp.model, message_id: d.message_id || ex.resp.message_id,
@@ -467,56 +522,133 @@ function handle(name, d) {
       raw: d.raw, rawTruncated: d.raw_truncated, respBytes: d.response_bytes, tFirstByte: d.t_first_byte,
       tFirstToken: d.t_first_token, tEnd: d.t, aborted: d.aborted, json: d.json,
     });
-    if (Array.isArray(d.content) && d.content.length) ex.blocks = d.content.map(b => ({ ...b, done: true }));
-    else ex.blocks.forEach(b => { if (b) b.done = true; });
+    // The assembled content is authoritative; keep partial tool input that never got a block_stop.
+    if (Array.isArray(d.content) && d.content.length) {
+      ex.blocks = d.content.map((c, i) => {
+        const prev = ex.blocks[i];
+        const b = { ...c, done: true };
+        if (prev?.partial && !prev.stopped && (c.type === 'tool_use' || c.type === 'server_tool_use')) { b.partial = prev.partial; b.incomplete = true; }
+        return b;
+      });
+    } else ex.blocks.forEach(b => { if (b) { b.done = true; if (b.partial && !b.stopped) b.incomplete = true; } });
     ex.done = true; ex.search = null;
     ex.calls = [];
-    for (const b of ex.blocks) if (b && (b.type === 'tool_use') && b.id) registerCall(ex, b, true);
-    markDirty(ex, 'all');
+    for (const b of ex.blocks) if (b && b.type === 'tool_use' && b.id) registerCall(ex, b, true);
+    // A reply that failed or was interrupted never gets results for its calls.
+    const L = lifecycle(ex);
+    if (L.s === 'failed' || L.s === 'interrupted') for (const id of ex.calls) { const t = S.tools.get(id); if (t && !t.result) t.missing = true; }
+    markDirty(ex, 'rows', 'dhead', 'reply', 'stats', 'raw', 'log');
     S.sideDirty = true;
   } else if (name === 'exchange_error') {
     ex.errors.push(d);
-    markDirty(ex, 'all');
+    markDirty(ex, 'rows', 'dhead', 'reply', 'stats', 'raw', 'log');
     S.sideDirty = true;
-  }
+  } else markDirty(ex, 'log');
 }
 
 function onReset(d) {
-  S.ex.clear(); S.threads.clear(); S.tools.clear(); S.agentCalls = []; S.seq = { agent: 0, side: 0, thread: 0 };
-  S.colorSlot = 1; S.dirty.clear(); S.pending = 0; S.focus = null;
+  // Keep the reader's place: the list anchor and the detail scroll are restored after the replay.
+  V.listAnchor = listAnchor();
+  saveDetailScroll();
+  S.ex.clear(); S.threads.clear(); S.sessions.clear(); S.tools.clear(); S.agentCalls = [];
+  S.colorSlot = 0; S.dirty.clear(); S.pending = 0; S.logTotal = 0;
   S.prices = d.prices || {}; S.pricesAsOf = d.prices_as_of || ''; S.evicted = d.evicted || 0;
   S.replaying = true; S.sideDirty = true;
-  $('#feed').replaceChildren();
+  V.rendered = null;
+  $('#list').replaceChildren();
+  updatePill();
   scheduleFlush();
+}
+
+function onReplayDone() {
+  S.replaying = false;
+  flush();  // render everything replayed before restoring positions
+  restoreListAnchor(V.listAnchor); V.listAnchor = null;
+  // Restore the selection by exchange ID; an evicted selection shows a placeholder instead of jumping.
+  if (V.selected == null) { const first = visibleRows()[0]; if (first) { selectEx(+first.dataset.id, { reveal: false, show: false }); return; } }
+  renderDetail();
 }
 
 function onEvicted(d) {
   S.evicted = d.total;
+  const gone = new Set(d.ids);
   for (const id of d.ids) {
     const ex = S.ex.get(id); if (!ex) continue;
-    ex.dom?.card.remove(); S.ex.delete(id);
+    ex.dom?.row.remove(); S.ex.delete(id); S.logTotal -= ex.log?.length || 0;
     const th = S.threads.get(ex.thread); if (th) th.ids = th.ids.filter(x => x !== id);
   }
+  // Prune view state and tool records that only refer to evicted exchanges.
+  for (const k of [...UI.keys()]) if (gone.has(+k.split(':')[0])) UI.delete(k);
+  for (const id of gone) { V.detailScroll.delete(id); F.force.delete(id); }
+  for (const [cid, t] of S.tools) if (!S.ex.has(t.callEx) && !S.ex.has(t.resultEx)) S.tools.delete(cid);
+  if (gone.has(V.selected)) renderDetail();
   S.sideDirty = true; scheduleFlush();
 }
 
 function classify(ex) {
   const p = ex.path.split('?')[0];
   if (ex.method !== 'POST' || !/\/v1\/messages\/?$/.test(p)) return 'nonmsg';
-  // Adapter: only the Anthropic Messages API is recognised in v1 (D8).
+  // Adapter: only the Anthropic Messages API is recognised (D8); anything else is a generic card.
   const r = ex.request;
   if (!r || typeof r !== 'object' || !Array.isArray(r.messages)) return 'generic';
   return 'msg';
 }
 
+function sessionOf(ex) {
+  const hv = hget(ex.headers, 'x-claude-code-session-id');
+  if (hv) return hv;
+  const uid = ex.request?.metadata?.user_id;
+  if (typeof uid === 'string') {
+    try { const o = JSON.parse(uid); if (o && o.session_id) return o.session_id; } catch { /* older format */ }
+    const m = uid.match(/session_([0-9a-f-]{8,})/i); if (m) return m[1];
+  }
+  return null;
+}
+function sessionRec(sid) {
+  const key = sid || '?';
+  let s = S.sessions.get(key);
+  if (!s) S.sessions.set(key, s = { key, sid, idx: S.sessions.size + 1, label: sid ? sid.slice(0, 8) : 'unknown session', seq: { agent: 0, side: 0, thread: 0 } });
+  return s;
+}
+const multiSession = () => S.sessions.size > 1;
+
 function onStart(d) {
   const ex = { id: d.id, t: d.t, method: d.method, path: d.path, headers: d.headers || [], request: d.request, reqBytes: d.request_bytes || 0,
-    resp: null, blocks: [], errors: [], calls: [], results: [], done: false, fresh: !S.replaying };
+    resp: null, blocks: [], errors: [], calls: [], results: [], done: false, fresh: !S.replaying, log: [], logOmitted: 0 };
   ex.kind = classify(ex);
+  ex.session = sessionRec(sessionOf(ex)).key;
   S.ex.set(ex.id, ex);
+  logEvent(ex, 'exchange_start', d);
   if (ex.kind === 'msg') analyze(ex);
-  addCard(ex);
+  addRow(ex);
   S.sideDirty = true;
+}
+
+// --- dashboard event log (bounded; consecutive deltas of one block are coalesced) ---
+function logEvent(ex, name, d) {
+  const L = ex.log;
+  const last = L[L.length - 1];
+  if (name === 'block_delta') {
+    const kind = d.text != null ? 'text' : d.thinking != null ? 'thinking' : 'partial_json';
+    const piece = d.text ?? d.thinking ?? d.partial_json ?? '';
+    if (last && last.name === 'block_delta' && last.index === d.index && last.kind === kind) {
+      last.n++; last.chars += piece.length; if (last.preview.length < 4000) last.preview += piece;
+      return;
+    }
+    L.push({ seq: ++S.logSeq, name, index: d.index, kind, n: 1, chars: piece.length, preview: piece, replayed: S.replaying, tr: Date.now() });
+  } else {
+    L.push({ seq: ++S.logSeq, name, t: d.t, data: d, replayed: S.replaying, tr: Date.now() });
+  }
+  S.logTotal++;
+  if (L.length > LOG_PER_EX) { const k = L.length - LOG_PER_EX; L.splice(0, k); ex.logOmitted += k; S.logTotal -= k; }
+  if (S.logTotal > LOG_TOTAL) {
+    for (const o of S.ex.values()) {   // oldest exchanges first
+      if (S.logTotal <= LOG_TOTAL * 0.9) break;
+      const k = Math.min(o.log.length, S.logTotal - Math.floor(LOG_TOTAL * 0.9));
+      if (!k || o === ex) continue;
+      o.log.splice(0, k); o.logOmitted += k; S.logTotal -= k;
+    }
+  }
 }
 
 function isPrefix(a, b) { if (a.length > b.length) return false; for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false; return true; }
@@ -527,30 +659,32 @@ function firstPromptText(msgs) {
 }
 
 function newThread(kind, ex) {
-  let key, name;
-  if (kind === 'main') key = name = 'main';
-  else if (kind === 'side') { S.seq.side++; key = 'side:' + S.seq.side; name = 'side'; }
-  else { S.seq[kind]++; key = name = kind + ':' + S.seq[kind]; }
+  const sess = S.sessions.get(ex.session);
+  let name, suffix;
+  if (kind === 'main') name = suffix = 'main';
+  else if (kind === 'side') { sess.seq.side++; name = 'side'; suffix = 'side:' + sess.seq.side; }
+  else { sess.seq[kind]++; name = suffix = kind + ':' + sess.seq[kind]; }
+  const key = sess.key + '|' + suffix;
+  const group = sess.key + '|' + (kind === 'side' ? 'side' : name);
   let color = NEUTRAL;
-  if (kind === 'main') color = PALETTE[0];
-  else if (kind !== 'side' && S.colorSlot < PALETTE.length) color = PALETTE[S.colorSlot++];
-  const th = { key, name, kind, group: kind === 'side' ? 'side' : key, ids: [], hasTools: ex.hasTools, firstHash: ex.mh[0], sysSig: ex.sysSig, color, startedBy: null };
+  if (kind !== 'side' && S.colorSlot < PALETTE.length) color = PALETTE[S.colorSlot++];
+  const th = { key, name, kind, group, session: sess.key, ids: [], hasTools: ex.hasTools, firstHash: ex.mh[0], sysSig: ex.sysSig, color, startedBy: null };
   S.threads.set(key, th);
-  if (!F.groups.has(th.group)) F.groups.set(th.group, th.group !== 'side');
+  if (!F.groups.has(group)) F.groups.set(group, kind !== 'side');
   return th;
 }
 
-// Work out which thread a message request belongs to and what is new in it.
+// Work out which thread of its session a message request belongs to, and what is new in it.
 function analyze(ex) {
   const r = ex.request, msgs = r.messages;
   ex.mh = msgs.map(m => sig(m));
   ex.sysSig = sig(r.system); ex.toolsSig = sig(r.tools);
   ex.hasTools = Array.isArray(r.tools) && r.tools.length > 0;
+  const mine = [...S.threads.values()].filter(t => t.session === ex.session && t.hasTools === ex.hasTools);
   // 1. The request whose messages are the longest prefix of ours is our parent.
   let best = null, bestLen = -1;
-  for (const th of S.threads.values()) {
-    if (th.hasTools !== ex.hasTools) continue;
-    for (const pid of th.ids.slice(-8)) {
+  for (const th of mine) {
+    for (const pid of th.ids.slice(-24)) {
       const p = S.ex.get(pid); if (!p) continue;
       const n = p.mh.length;
       if (n < bestLen || n > ex.mh.length) continue;
@@ -562,19 +696,19 @@ function analyze(ex) {
     th = S.threads.get(best.thread); ex.prev = best.id; ex.newStart = best.mh.length; ex.rewrite = false;
   } else {
     // 2. Same first message: the same conversation with its history rewritten.
-    for (const t of S.threads.values()) if (t.hasTools === ex.hasTools && t.firstHash === ex.mh[0] && t.ids.length) th = t;
-    let kind = null;
+    for (const t of mine) if (t.firstHash === ex.mh[0] && t.ids.length) th = t;
     if (!th) {
+      const main = S.threads.get(ex.session + '|main');
+      let kind;
       if (!ex.hasTools) kind = 'side';
       else {
-        const call = matchAgent(firstPromptText(msgs));
+        const call = matchAgent(firstPromptText(msgs), ex.session);
         if (call) {
-          kind = 'agent';
           th = newThread('agent', ex);
           call.thread = th.key; th.startedBy = call;
           const cex = S.ex.get(call.exId); if (cex) markDirty(cex, 'reply');
-        } else if (!S.threads.has('main')) kind = 'main';
-        else if (S.threads.get('main').sysSig === ex.sysSig) th = S.threads.get('main');  // e.g. compaction or /clear
+        } else if (!main) kind = 'main';
+        else if (main.sysSig === ex.sysSig) th = main;  // e.g. compaction or /clear in this session
         else kind = 'thread';
       }
       if (!th) th = newThread(kind, ex);
@@ -589,50 +723,58 @@ function analyze(ex) {
     }
   }
   ex.thread = th.key; th.ids.push(ex.id);
-  // Tool results in the new messages pair with their calls.
+  // Tool results in the new messages pair with their calls, by call ID only.
   for (const m of msgs.slice(ex.newStart)) {
     if (m.role !== 'user') continue;
-    for (const b of blocksOf(m)) if (b.type === 'tool_result' && b.tool_use_id) { setResult(b.tool_use_id, ex, b); ex.results.push(b.tool_use_id); }
+    for (const b of blocksOf(m)) if (b.type === 'tool_result' && b.tool_use_id) { setResult(b.tool_use_id, ex, b); if (!ex.results.includes(b.tool_use_id)) ex.results.push(b.tool_use_id); }
   }
-  // Calls from the parent's reply that this request did not answer never got a result.
+  // Calls from the parent's reply that this same-thread continuation did not answer never got a result.
   const P = S.ex.get(ex.prev);
-  if (P && P.thread === ex.thread) {
+  if (P && P.thread === ex.thread && !ex.rewrite) {
     let changed = false;
     for (const cid of P.calls) { const t = S.tools.get(cid); if (t && !t.result && !t.missing) { t.missing = true; changed = true; } }
-    if (changed) markDirty(P, 'head', 'reply');
+    if (changed) markDirty(P, 'rows', 'reply');
   }
 }
 
-function matchAgent(text) {
+function matchAgent(text, session) {
   if (!text) return null;
   for (let i = S.agentCalls.length - 1; i >= 0; i--) {
-    const c = S.agentCalls[i]; if (c.thread) continue;
+    const c = S.agentCalls[i]; if (c.thread || c.session !== session) continue;
     const p = (c.prompt || '').trim(); if (!p) continue;
     if (text === p || text.includes(p) || (text.length > 40 && p.includes(text))) return c;
   }
   return null;
 }
 
+// Normalised call identity: reply tool_use.id and request tool_result.tool_use_id are the same call_id.
 function registerCall(ex, b, final) {
   let t = S.tools.get(b.id);
   if (!t) S.tools.set(b.id, t = { id: b.id });
-  Object.assign(t, { name: b.name, input: b.input, callEx: ex.id });
   if (!ex.calls.includes(b.id)) ex.calls.push(b.id);
+  if (t.callEx != null && t.callEx !== ex.id && S.ex.has(t.callEx)) {
+    const other = S.ex.get(t.callEx);
+    if (other.session !== ex.session || other.thread !== ex.thread) { t.collision = true; markDirty(other, 'rows', 'reply'); }
+    return; // the first call with this ID stays the one we pair with
+  }
+  Object.assign(t, { name: b.name, input: b.input, callEx: ex.id, callSession: ex.session, callThread: ex.thread });
+  if (t.result && t.resultSession !== ex.session) t.collision = true;
   if (final && (b.name === 'Agent' || b.name === 'Task') && !S.agentCalls.some(c => c.toolUseId === b.id))
-    S.agentCalls.push({ toolUseId: b.id, prompt: b.input?.prompt, exId: ex.id, thread: null });
-  if (t.result) t.missing = false;
+    S.agentCalls.push({ toolUseId: b.id, prompt: b.input?.prompt, exId: ex.id, session: ex.session, thread: null });
+  if (t.result) { t.missing = false; const rex = S.ex.get(t.resultEx); if (rex && rex !== ex) markDirty(rex, 'rows', 'new'); }
 }
 function setResult(id, ex, b) {
   let t = S.tools.get(id);
   if (!t) S.tools.set(id, t = { id });
-  if (t.result && t.resultEx !== ex.id) return; // first arrival is the one we pair with
-  Object.assign(t, { result: b, resultEx: ex.id, resultT: ex.t, isError: !!b.is_error, missing: false, size: resultText(b).length });
+  if (t.callSession !== undefined && t.callSession !== ex.session) { t.collision = true; return; }
+  if (t.result) return; // the first observed result origin wins; resent history does not move it
+  Object.assign(t, { result: b, resultEx: ex.id, resultT: ex.t, resultSession: ex.session, isError: !!b.is_error, missing: false, size: resultText(b).length });
   const cex = S.ex.get(t.callEx);
-  if (cex && cex !== ex) markDirty(cex, 'head', 'reply');
+  if (cex && cex !== ex) markDirty(cex, 'rows', 'reply');
 }
 
 // =====================================================================
-// Derived facts about an exchange
+// Derived facts
 // =====================================================================
 const newMsgs = ex => ex.kind === 'msg' ? ex.request.messages.slice(ex.newStart) : [];
 function toolErr(ex) {
@@ -640,22 +782,32 @@ function toolErr(ex) {
   for (const id of ex.results) if (S.tools.get(id)?.isError) return true;
   return false;
 }
-const hasError = ex => ex.errors.length > 0 || toolErr(ex);
+const apiFailed = ex => ex.errors.length > 0 || (ex.resp?.status ?? 0) >= 400;
+const hasError = ex => apiFailed(ex) || toolErr(ex);
 function toolNames(ex) {
   const s = new Set();
   for (const id of ex.calls) { const n = S.tools.get(id)?.name; if (n) s.add(n); }
   for (const id of ex.results) { const n = S.tools.get(id)?.name; if (n) s.add(n); }
   return s;
 }
-function state(ex) {
-  if (ex.errors.length) return 'error';
-  if (ex.done) return ex.resp?.aborted ? 'aborted' : 'done';
-  if (!ex.resp) return 'sending';
+// Request lifecycle (§13.4). Failure takes precedence over interruption; a failed tool result never fails the exchange.
+function lifecycle(ex) {
+  if (apiFailed(ex)) return { s: 'failed', closed: !!ex.resp?.aborted };
+  if (ex.done) return { s: ex.resp?.aborted ? 'interrupted' : 'completed' };
+  if (!ex.resp) return { s: 'sending' };
   const live = [...ex.blocks].reverse().find(b => b && !b.done);
-  if (!live) return ex.blocks.length ? 'streaming' : 'sending';
-  if (live.type === 'thinking' || live.type === 'redacted_thinking') return 'thinking';
-  if (live.type === 'tool_use' || live.type === 'server_tool_use') return 'tool input…';
-  return 'streaming';
+  let sub = '';
+  if (live?.type === 'thinking' || live?.type === 'redacted_thinking') sub = 'thinking';
+  else if (live?.type === 'tool_use' || live?.type === 'server_tool_use') sub = 'tool input';
+  return { s: 'streaming', sub };
+}
+const LIFE = { sending: '⏳ Sending', streaming: '⏳ Streaming', completed: 'Completed', failed: '✗ Failed', interrupted: '⚠ Interrupted' };
+function lifeChips(ex) {
+  const L = lifecycle(ex);
+  const cls = { sending: 'state-live', streaming: 'state-live', completed: 'state-done', failed: 'badc', interrupted: 'warnc' }[L.s];
+  const out = [span('chip ' + cls, LIFE[L.s] + (L.sub ? ` · ${L.sub}…` : ''), L.s === 'interrupted' ? 'the agent closed the connection before the reply ended' : '')];
+  if (L.closed) out.push(span('chip warnc', 'client closed', 'the agent also closed the connection'));
+  return out;
 }
 function errSummary(e) {
   let b = e.body, msg = '';
@@ -684,7 +836,7 @@ function fold(key, def, headFn, bodyFn, cls = '') {
   const el = h('div', { class: 'fold ' + cls });
   const draw = () => {
     const open = isOpen(key, def);
-    const head = h('div', { class: 'foldhead', onclick: e => { if (e.target.closest('a,button,.link')) return; e.stopPropagation(); UI.set(key, !open); draw(); } },
+    const head = h('div', { class: 'foldhead', onclick: e => { e.stopPropagation(); if (e.target.closest('a,button,.link')) return; UI.set(key, !open); draw(); } },
       h('span', { class: 'caret' }, open ? '▾' : '▸'), typeof headFn === 'function' ? headFn() : headFn);
     el.replaceChildren(head);
     if (open) el.append(h('div', { class: 'foldbody' }, safe(bodyFn)));
@@ -754,15 +906,19 @@ function mdRender(src) {
   return out.join('');
 }
 
-function jsonTree(key, value, openDepth = 2) {
-  return h('div', { class: 'json' }, copyBtn(() => JSON.stringify(value, null, 2)), jnode(key, value, 0, undefined, openDepth));
+// JSON viewer (§13.6): stable path keys, child counts, lazy children, long-string clipping, full-value copy.
+function jsonTree(key, value, openDepth = 2, { truncated = false } = {}) {
+  if (value === undefined) return h('div', { class: 'json' }, h('span', { class: 'jnote' }, 'unavailable'));
+  return h('div', { class: 'json' }, copyBtn(() => typeof value === 'string' ? value : JSON.stringify(value, null, 2)),
+    truncated ? h('div', { class: 'warn' }, '⚠ truncated by the recorder — this is not the full value') : '',
+    jnode(key, value, 0, undefined, openDepth));
 }
 function jnode(key, v, depth, name, openDepth) {
   const keyEl = name !== undefined ? [h('span', { class: 'jk' }, JSON.stringify(String(name))), ': '] : [];
   if (v === null || typeof v !== 'object') return h('div', { class: 'jrow' }, keyEl, jprim(key, v));
   const isArr = Array.isArray(v); const entries = isArr ? v.map((x, i) => [i, x]) : Object.entries(v);
   const [o, c] = isArr ? ['[', ']'] : ['{', '}'];
-  if (!entries.length) return h('div', { class: 'jrow' }, keyEl, o + c);
+  if (!entries.length) return h('div', { class: 'jrow' }, keyEl, o + c, h('span', { class: 'jnote' }, isArr ? '  empty array' : '  empty object'));
   const el = h('div');
   const draw = () => {
     const open = isOpen(key, depth < openDepth);
@@ -782,12 +938,14 @@ function jnode(key, v, depth, name, openDepth) {
 }
 function jprim(key, v) {
   if (typeof v === 'string') {
+    if (v === '') return [h('span', { class: 'js' }, '""'), h('span', { class: 'jnote' }, '  empty string')];
     if (v.length <= 160 && !v.includes('\n')) return h('span', { class: 'js' }, JSON.stringify(v));
     const el = h('span', { class: 'js' });
     const draw = () => {
       const open = isOpen(key, false);
       el.replaceChildren(open ? JSON.stringify(v) : JSON.stringify(v.slice(0, 160)).slice(0, -1) + '…"',
-        ' ', h('button', { class: 'more', onclick: e => { e.stopPropagation(); UI.set(key, !open); draw(); } }, open ? 'clip' : `${fmtChars(v.length)} ▸`));
+        ' ', h('button', { class: 'more', onclick: e => { e.stopPropagation(); UI.set(key, !open); draw(); } }, open ? 'clip' : `${fmtChars(v.length)} ▸`),
+        copyBtn(() => v));
     };
     draw();
     return el;
@@ -835,20 +993,42 @@ function diffView(ops, ctx = 3) {
 }
 
 // =====================================================================
-// Links between cards
+// Links and selection
 // =====================================================================
 function exLink(id, label) {
   return h('a', { class: 'link', onclick: e => { e.preventDefault(); e.stopPropagation(); gotoEx(id); } }, label || '#' + id);
 }
-function gotoEx(id, open = true) {
-  const ex = S.ex.get(id);
-  if (!ex) { toast(`#${id} is no longer in the buffer`); return; }
-  if (!visible(ex)) { F.force.add(id); applyVisibility(ex); }
-  if (open && !ex.expanded) toggleCard(ex, true);
-  setFocus(ex);
-  ex.dom.card.scrollIntoView({ block: 'start' });
-  ex.dom.card.classList.remove('flash'); void ex.dom.card.offsetWidth; ex.dom.card.classList.add('flash');
+// Cross-links select their destination and reveal it in the list.
+function gotoEx(id) {
+  if (!S.ex.has(id)) { toast(`#${id} is no longer in the buffer`); return; }
+  selectEx(id, { reveal: true });
+  const row = S.ex.get(id).dom?.row;
+  if (row && !row.hidden) { row.classList.remove('flash'); void row.offsetWidth; row.classList.add('flash'); }
 }
+
+function selectEx(id, { reveal = true, focusDetail = false, show = true } = {}) {
+  if (V.selected !== id) {
+    saveDetailScroll();
+    const old = S.ex.get(V.selected)?.dom?.row;
+    if (old) { old.classList.remove('sel'); old.setAttribute('aria-selected', 'false'); }
+    V.selected = id;
+    const row = S.ex.get(id)?.dom?.row;
+    if (row) { row.classList.add('sel'); row.setAttribute('aria-selected', 'true'); $('#list').setAttribute('aria-activedescendant', row.id); }
+    renderDetail();
+  }
+  if (show && !document.body.classList.contains('show-detail')) {
+    // Narrow screens: switch to the detail view, remembering the list position for the way back.
+    if (isNarrow()) V.narrowAnchor = listAnchor() || { top: listScroll.scrollTop };
+    document.body.classList.add('show-detail');
+  }
+  if (reveal) revealRow(id);
+  if (focusDetail) $('#detailScroll').focus({ preventScroll: true });
+}
+function revealRow(id) {
+  const row = S.ex.get(id)?.dom?.row;
+  if (row && !row.hidden) row.scrollIntoView({ block: 'nearest' });
+}
+function saveDetailScroll() { if (V.rendered != null) V.detailScroll.set(V.rendered, $('#detailScroll').scrollTop); }
 
 // =====================================================================
 // Message vocabulary rendering
@@ -863,8 +1043,7 @@ function mediaEl(b) {
 
 function renderMessages(ex, msgs, offset, mode) {
   const list = h('div', { class: 'msgs' });
-  // For the history view, results are found in the same request.
-  const local = new Map();
+  const local = new Map();   // history view: results are found in the same request
   if (mode === 'history') for (const m of ex.request.messages) for (const b of blocksOf(m)) if (b.type === 'tool_result') local.set(b.tool_use_id, b);
   const localCalls = new Set();
   for (const m of msgs) if (m.role === 'assistant') for (const b of blocksOf(m)) if (b.type === 'tool_use') localCalls.add(b.id);
@@ -876,7 +1055,7 @@ function renderMessages(ex, msgs, offset, mode) {
         list.append(h('div', { class: 'msg k-echo' }, '🤖 the previous reply, from ', exLink(ex.prev), ' (shown there)'));
         return;
       }
-      blocksOf(m).forEach((b, bi) => list.append(assistantBlock(ex, b, `${base}:${bi}`, { local, mode })));
+      blocksOf(m).forEach((b, bi) => list.append(...[].concat(assistantBlock(ex, b, `${base}:${bi}`, { local, mode }))));
     } else {
       blocksOf(m).forEach((b, bi) => list.append(...[].concat(userBlock(ex, b, `${base}:${bi}`, mode, localCalls))));
     }
@@ -898,23 +1077,29 @@ function userBlock(ex, b, key, mode, localCalls) {
     const nlines = text ? text.split('\n').length : 0;
     const status = err ? span('bad', '✗ error') : span('ok', '✓');
     if (mode === 'history' && localCalls.has(b.tool_use_id))
-      return h('div', { class: 'msg k-result' + (err ? ' err' : ''), 'data-tool': name }, h('span', { class: 'muted' }, `⚙ result for ▶ ${name}${arg ? ' · ' + trunc(arg, 60) : ''} `), status, h('span', { class: 'faint' }, ' (shown beside its call above)'));
-    if (mode === 'new' && t.callEx && t.callEx !== ex.id && S.ex.has(t.callEx)) {
-      // Primary view is the call's card; here it is a compact reference.
+      return h('div', { class: 'msg k-result' + (err ? ' err' : '') }, h('span', { class: 'muted' }, `⚙ result for ▶ ${name}${arg ? ' · ' + trunc(arg, 60) : ''} `), status, h('span', { class: 'faint' }, ' (shown beside its call above)'));
+    if (t.collision) return h('div', { class: 'msg k-result err' }, label('⚙', 'Result'), h('div', { class: 'warnbox' }, `⚠ call ID ${b.tool_use_id} was seen in more than one thread or session — not paired`), resultBody(key + ':r', b));
+    if (mode === 'new' && t.callEx != null && t.callEx !== ex.id && S.ex.has(t.callEx) && t.resultEx === ex.id) {
+      // Primary view is the call's request; here it is a compact reference.
       return fold(key, false, () => [h('span', { class: 'mlabel', style: 'margin:0' }, '⚙ Result'), h('b', null, name), arg ? h('span', { class: 'mono muted sumtxt' }, trunc(arg, 80)) : '', status,
         h('span', { class: 'faint' }, `${nlines} line${nlines === 1 ? '' : 's'}`), h('span', null, '↖ from ', exLink(t.callEx))],
         () => longText(key + ':r', text || '(empty)', { lines: 10, mono: true }), 'msg k-result' + (err ? ' err' : ''));
     }
-    // The call is not in the buffer: show the pair here.
-    return pairEl(ex, { id: b.tool_use_id, name: t.name || '(call not in buffer)', input: t.input, done: true }, key, { result: b, exId: ex.id });
+    // The call is not available here: say why, and show the result in full.
+    const why = t.callEx == null ? 'orphan result — no call with this ID has been seen' : !S.ex.has(t.callEx) ? 'its call was evicted from the buffer' : '';
+    return pairEl(ex, { id: b.tool_use_id, name: t.name || '(unknown call)', input: t.input, done: true }, key, { result: b, exId: ex.id }, false, why);
   }
   if (b.type === 'image' || b.type === 'document') return mediaEl(b);
   return fold(key, false, [`▫ ${b.type}`], () => jsonTree(key + ':j', b, 2), 'msg k-other');
 }
 
-function assistantBlock(ex, b, key, { local, mode, live } = {}) {
+function assistantBlock(ex, b, key, { local, live } = {}) {
   if (!b) return '';
-  if (b.type === 'text') return h('div', { class: 'msg k-model' }, label('🤖', 'Model'), longText(key, b.text || '', { md: true, lines: 60, maxChars: 12000, cursor: live && !b.done }));
+  if (b.type === 'text') {
+    if (live && !b.done)  // provisional: plain text while it streams, Markdown once complete
+      return h('div', { class: 'msg k-model' }, label('🤖', 'Model', span('prov', 'streaming — provisional')), longText(key, b.text || '', { lines: 60, maxChars: 12000, cursor: true }));
+    return h('div', { class: 'msg k-model' }, label('🤖', 'Model'), longText(key, b.text || '', { md: true, lines: 60, maxChars: 12000 }));
+  }
   if (b.type === 'thinking') {
     const txt = b.thinking || '';
     return fold(key, false, () => [h('span', { class: 'mlabel', style: 'margin:0' }, '💭 thinking'), h('span', { class: 'faint' }, fmtChars(txt.length)), live && !b.done ? h('span', { class: 'cursor' }) : ''],
@@ -928,11 +1113,20 @@ function assistantBlock(ex, b, key, { local, mode, live } = {}) {
   return fold(key, false, [`▫ ${b.type}`, b.name ? ' · ' + b.name : ''], () => jsonTree(key + ':j', b, 2), 'msg k-other');
 }
 
-function inputView(key, input, partial, live) {
-  if (input === undefined || (input && typeof input === 'object' && '_partial_json' in input)) {
-    const pj = input?._partial_json ?? partial ?? '';
-    return h('div', null, h('pre', { class: 'mono' }, pj || '…', live ? h('span', { class: 'cursor' }) : ''));
+function inputView(key, b, live) {
+  const input = b.input;
+  const streaming = live && !b.done;
+  if (streaming || (b.incomplete && (input === undefined || (input && !Object.keys(input).length)))) {
+    // Provisional: fragments of the tool input as they arrive; never parsed until complete.
+    return h('div', null, h('div', { class: 'mlabel' }, span('prov', streaming ? 'input arriving — provisional' : 'input incomplete — the reply ended before it finished')),
+      h('pre', { class: 'mono' }, b.partial || '…', streaming ? h('span', { class: 'cursor' }) : ''));
   }
+  if (input && typeof input === 'object' && '_partial_json' in input) {
+    let why = '';
+    try { JSON.parse(input._partial_json); } catch (e) { why = e.message; }
+    return h('div', null, h('div', { class: 'warnbox' }, `⚠ the final tool input is not valid JSON${why ? ': ' + why : ''}`), h('pre', { class: 'mono' }, input._partial_json));
+  }
+  if (input === undefined) return h('span', { class: 'jnote' }, 'input unavailable');
   if (!input || typeof input !== 'object') return jsonTree(key + ':ij', input, 2);
   const kv = h('div', { class: 'kv' });
   for (const [k, v] of Object.entries(input)) {
@@ -940,32 +1134,35 @@ function inputView(key, input, partial, live) {
       typeof v === 'string' ? longText(`${key}:in:${k}`, v, { lines: 8, maxChars: 1500, mono: true })
         : h('span', { class: 'mono' }, trunc(JSON.stringify(v), 300)));
   }
+  if (!Object.keys(input).length) kv.append(h('span', { class: 'jnote' }, '(no arguments)'));
   return h('div', null, kv, fold(key + ':ij', false, [h('span', { class: 'faint' }, 'input JSON')], () => jsonTree(key + ':ijt', input, 2)));
 }
 
-function pairEl(ex, b, key, localRes, live) {
+function pairEl(ex, b, key, localRes, live, why) {
   const t = S.tools.get(b.id) || {};
   let res = localRes;
-  if (!res && t.result) res = { result: t.result, exId: t.resultEx, t: t.resultT };
+  if (!res && t.result && !t.collision) res = { result: t.result, exId: t.resultEx, t: t.resultT };
   const err = !!res?.result?.is_error;
   const name = b.name || t.name || '?';
   const call = S.agentCalls.find(c => c.toolUseId === b.id && c.thread);
   const th = call && S.threads.get(call.thread);
   const left = h('div', { class: 'pcall' },
-    h('div', { class: 'phead' }, `▶ ${name}`, th && th.ids.length ? h('span', { class: 'sub' }, exLink(th.ids[0], `↘ thread ${th.name}`)) : ''),
-    inputView(key, b.input, b.partial, live && !b.done));
+    h('div', { class: 'phead' }, `▶ ${name}`, h('span', { class: 'cid', title: b.id }, b.id ? '…' + String(b.id).slice(-8) : ''),
+      th && th.ids.length ? h('span', { class: 'sub' }, exLink(th.ids[0], `↘ thread ${th.name}`)) : ''),
+    why ? h('div', { class: 'warn' }, why) : inputView(key, b, live));
   let right;
-  if (res) {
+  if (t.collision && !localRes) right = h('div', { class: 'pres' }, h('div', { class: 'warnbox' }, '⚠ unresolved: this call ID also appears in another thread or session'));
+  else if (res) {
     const callEx = S.ex.get(t.callEx);
     const delay = res.t && callEx?.resp?.tEnd ? res.t - callEx.resp.tEnd : null;
     right = h('div', { class: 'pres' },
       h('div', { class: 'phead' }, '⚙ result', err ? span('bad', '✗ error') : span('ok', '✓'),
         res.exId && res.exId !== ex.id ? h('span', { class: 'sub' }, '(in ', exLink(res.exId), delay != null ? `, +${fmtDur(delay)}` : '', ')') : ''),
-      resultBody(key + ':res', res.result));
+      resultBody(key + ':res', res.result),
+      fold(key + ':resj', false, [h('span', { class: 'faint' }, 'result JSON')], () => jsonTree(key + ':resjt', res.result, 2)));
   } else if (t.missing) right = h('div', { class: 'pres' }, h('div', { class: 'waiting' }, '✗ no result received'));
   else right = h('div', { class: 'pres' }, h('div', { class: 'waiting' }, b.done || ex.done ? '⏳ waiting for result' : '… call still streaming'));
-  const hl = F.tools.has(name);
-  return h('div', { class: 'pair' + (err ? ' err' : '') + (hl ? ' hl' : ''), 'data-tool': name }, left, right);
+  return h('div', { class: 'pair' + (err ? ' err' : ''), 'data-tool': name }, left, right);
 }
 
 function resultBody(key, block) {
@@ -973,58 +1170,50 @@ function resultBody(key, block) {
   const parts = [];
   const text = resultText(block);
   if (Array.isArray(c)) for (const x of c) if (x.type === 'image' || x.type === 'document') parts.push(mediaEl(x));
-  parts.unshift(text ? longText(key, Array.isArray(c) ? c.filter(x => x.type === 'text').map(x => x.text).join('\n') || text : text, { lines: 10, maxChars: 3000, mono: true }) : h('span', { class: 'faint' }, '(empty)'));
+  parts.unshift(text ? longText(key, Array.isArray(c) ? c.filter(x => x.type === 'text').map(x => x.text).join('\n') || text : text, { lines: 10, maxChars: 3000, mono: true }) : h('span', { class: 'jnote' }, '(empty result)'));
   return parts;
 }
 
 // =====================================================================
-// Cards
+// List rows (left pane)
 // =====================================================================
-const feed = $('#feed');
+const listEl = $('#list'), listScroll = $('#listScroll');
 
-function addCard(ex) {
-  const card = h('article', { class: 'card kind-' + ex.kind + (ex.fresh ? ' fresh' : ''), 'data-id': ex.id });
-  ex.dom = { card, head: h('div', { class: 'row head' }), newRow: h('div', { class: 'row newrow' }), reply: h('div', { class: 'row replyrow' }),
-    err: h('div', { class: 'errbanner' }), body: h('div', { class: 'body' }), secs: {} };
-  card.append(ex.dom.head, ex.dom.newRow, ex.dom.reply, ex.dom.err, ex.dom.body);
-  // Toggle on pointerdown + pointerup on the card itself, not on 'click'. The rows of a
-  // streaming card are redrawn many times a second, and a 'click' whose press and release
-  // land on different (replaced) elements is dropped by the browser.
+function addRow(ex) {
+  const row = h('div', { class: 'item kind-' + ex.kind + (ex.fresh ? ' fresh' : ''), 'data-id': ex.id, id: 'row-' + ex.id, role: 'option', 'aria-selected': 'false' });
+  ex.dom = { row, head: h('div', { class: 'row head' }), newRow: h('div', { class: 'row newrow' }), reply: h('div', { class: 'row replyrow' }), err: h('div', { class: 'errbanner' }), secs: {} };
+  row.append(ex.dom.head, ex.dom.newRow, ex.dom.reply, ex.dom.err);
+  // Select on pointerdown + pointerup on the row itself, not on 'click': a streaming row is redrawn many
+  // times a second, and a click whose press and release land on replaced elements is dropped by the browser.
   let down = null;
-  card.addEventListener('pointerdown', e => {
+  row.addEventListener('pointerdown', e => {
     down = null;
-    if (e.button !== 0) return;
-    if (ex.dom.body.contains(e.target) || e.target.closest('a,button,input,.link')) return;
+    if (e.button !== 0 || e.target.closest('a,button,input,.link')) return;
     down = { x: e.clientX, y: e.clientY };
   });
-  card.addEventListener('pointerup', e => {
+  row.addEventListener('pointerup', e => {
     const d = down; down = null;
     if (!d || e.button !== 0) return;
     if (Math.hypot(e.clientX - d.x, e.clientY - d.y) > 5) return;  // a drag, e.g. selecting text
     if (window.getSelection()?.toString()) return;
-    setFocus(ex); toggleCard(ex);
+    selectEx(ex.id, { reveal: false });
   });
-  ex.expanded = isOpen(`${ex.id}:card`, false);
+  if (V.selected === ex.id) { row.classList.add('sel'); row.setAttribute('aria-selected', 'true'); }
   renderRows(ex);
-  if (ex.expanded) renderBody(ex);
   const vis = visible(ex);
-  card.hidden = !vis;
-  withAnchor(() => feed.prepend(card));
-  if (vis && ex.fresh && window.scrollY > 40) { S.pending++; updatePill(); }
-  if (ex.fresh) setTimeout(() => card.classList.remove('fresh'), 1700);
-}
-
-function toggleCard(ex, force) {
-  ex.expanded = force ?? !ex.expanded;
-  UI.set(`${ex.id}:card`, ex.expanded);
-  renderRows(ex);
-  if (ex.expanded) renderBody(ex); else { ex.dom.body.replaceChildren(); ex.dom.secs = {}; }
+  row.hidden = !vis;
+  keepListAnchor(() => listEl.prepend(row));
+  if (!S.replaying) {
+    if (vis && listScroll.scrollTop > 40) { S.pending++; updatePill(); }
+    // Select the first visible request only when nothing is selected; arrivals never replace a selection.
+    if (vis && V.selected == null) selectEx(ex.id, { reveal: false, show: false });
+  }
+  if (ex.fresh) setTimeout(() => row.classList.remove('fresh'), 1700);
 }
 
 function renderRows(ex) {
   const d = ex.dom;
-  d.card.classList.toggle('haserr', hasError(ex));
-  d.card.classList.toggle('expanded', !!ex.expanded);
+  d.row.classList.toggle('haserr', hasError(ex));
   d.head.replaceChildren(...headRow(ex));
   if (ex.kind === 'msg') {
     d.newRow.replaceChildren(h('span', { class: 'rowlab' }, 'NEW'), h('span', { class: 'sumrow' }, newSummary(ex)));
@@ -1033,41 +1222,42 @@ function renderRows(ex) {
   d.err.replaceChildren(...ex.errors.map(e => h('div', null, errSummary(e))));
 }
 
-function threadTag(th) { return th ? h('span', { class: 'ttag', style: `--tc:${th.color}` }, th.name) : ''; }
+function threadTag(th) {
+  if (!th) return '';
+  return h('span', { class: 'ttag', style: `--tc:${th.color}`, title: 'session ' + (S.sessions.get(th.session)?.sid || 'unknown') }, th.name);
+}
+function sessTag(key) {
+  const s = S.sessions.get(key);
+  return s && multiSession() ? h('span', { class: 'stag', title: 'Claude Code session ' + (s.sid || 'unknown') }, s.label) : '';
+}
 
 function headRow(ex) {
-  const out = [h('span', { class: 'caret' }, ex.expanded ? '▾' : '▸'), h('span', { class: 'id' }, '#' + ex.id), span('num', fmtTime(ex.t), new Date(ex.t).toISOString())];
-  const st = state(ex);
+  const out = [h('span', { class: 'id' }, '#' + ex.id), span('num', fmtTime(ex.t), new Date(ex.t).toISOString())];
   const status = ex.resp?.status;
   const lat = (ex.resp?.tEnd ?? Date.now()) - ex.t;
   if (ex.kind === 'msg') {
     const th = S.threads.get(ex.thread);
-    out.push(threadTag(th));
+    out.push(sessTag(ex.session), threadTag(th));
     if (th?.startedBy && th.ids[0] === ex.id) out.push(h('span', { class: 'faint' }, exLink(th.startedBy.exId, `↖ started by #${th.startedBy.exId}`)));
     out.push(span('num', shortModel(modelOf(ex)), modelOf(ex)));
   } else {
-    out.push(h('span', { class: 'ttag', style: `--tc:${NEUTRAL}` }, ex.kind === 'generic' ? 'unrecognised API' : 'other'), h('span', { class: 'mono' }, `${ex.method} ${ex.path}`));
+    out.push(sessTag(ex.session), h('span', { class: 'ttag', style: `--tc:${NEUTRAL}` }, ex.kind === 'generic' ? 'unrecognised API' : 'other'), h('span', { class: 'mono' }, `${ex.method} ${ex.path}`));
   }
   if (status) out.push(span('chip ' + (status >= 400 ? 'badc' : 'okc'), String(status), ex.resp.reason || ''));
   out.push(span('num lat', fmtDur(lat), `${exact(Math.round(lat))} ms total`));
   const u = ex.resp?.usage;
   if (ex.kind === 'msg' && u) {
-    const tin = tokIn(u);
-    out.push(span('num', `${fmtTok(tin)}/${fmtTok(u.output_tokens || 0)}`,
+    out.push(span('num', `${fmtTok(tokIn(u))}/${fmtTok(u.output_tokens || 0)}`,
       `input ${exact(u.input_tokens || 0)} · cache read ${exact(u.cache_read_input_tokens || 0)} · cache write ${exact(u.cache_creation_input_tokens || 0)} · output ${exact(u.output_tokens || 0)}`));
-    if (u.cache_read_input_tokens || u.cache_creation_input_tokens)
-      out.push(span('num faint', `cache ${fmtTok(u.cache_read_input_tokens || 0)}r/${fmtTok(u.cache_creation_input_tokens || 0)}w`));
     const c = costOf(ex);
     out.push(span('num', fmtCost(c), c == null ? `no price for ${modelOf(ex)}` : `$${c.toFixed(6)}`));
   }
-  if (ex.resp?.stop_reason) out.push(span('num', ex.resp.stop_reason));
-  out.push(span('chip ' + (st === 'error' ? 'badc' : st === 'done' ? 'state-done' : st === 'aborted' ? 'warnc' : 'state-live'), st === 'sending' || st === 'streaming' || st === 'thinking' ? (st === 'streaming' ? '⏳ streaming…' : st === 'thinking' ? '💭 thinking…' : '⏳ sending…') : st));
+  out.push(...lifeChips(ex));
   if (ex.kind === 'msg') {
     const P = S.ex.get(ex.prev);
     if (P && (P.sysSig !== ex.sysSig || P.toolsSig !== ex.toolsSig))
       out.push(span('chip warnc', 'Δ ' + [P.sysSig !== ex.sysSig && 'system', P.toolsSig !== ex.toolsSig && 'tools'].filter(Boolean).join('+'), 'changed since #' + P.id));
-    if (ex.rewrite) out.push(span('chip warnc', '⚠ history rewritten'));
-    if (ex.calls.length) out.push(span('num', `${ex.calls.length} tool${ex.calls.length > 1 ? 's' : ''}`));
+    if (ex.rewrite) out.push(span('chip warnc', '⚠ rewritten', 'history rewritten'));
   }
   return out;
 }
@@ -1093,7 +1283,7 @@ function newSummary(ex) {
     const list = []; items.forEach((it, i) => { if (i) list.push(', '); list.push(it); });
     out.push(h('span', null, `⚙ ${results.length} result${results.length > 1 ? 's' : ''}: `, list, results.length > 6 ? ` +${results.length - 6}` : ''));
   }
-  if (reminders) out.push(h('span', { class: 'muted sum-reminder' }, `🔔 ${reminders} reminder${reminders > 1 ? 's' : ''}`));
+  if (reminders) out.push(h('span', { class: 'muted sum-reminder' }, `🔔 ${reminders}`));
   if (media) out.push(h('span', { class: 'muted' }, `🖼 ${media}`));
   if (!out.length) out.push(h('span', { class: 'faint' }, assistants ? '(only the previous reply)' : '—'));
   return out;
@@ -1102,7 +1292,6 @@ function newSummary(ex) {
 function replySummary(ex) {
   const out = [];
   const blocks = ex.blocks.filter(Boolean);
-  const st = state(ex);
   const live = !ex.done;
   const text = blocks.find(b => b.type === 'text' && b.text);
   const think = blocks.filter(b => b.type === 'thinking' || b.type === 'redacted_thinking');
@@ -1110,25 +1299,27 @@ function replySummary(ex) {
     const n = think.reduce((a, b) => a + (b.thinking || '').length, 0);
     out.push(h('span', { class: 'muted sum-thinking' }, think.some(b => b.type === 'redacted_thinking') && !n ? '💭 redacted' : `💭 ${fmtChars(n)}`));
   }
-  if (text) out.push(h('span', { class: 'sumtxt' }, `🤖 "${trunc(firstLine(text.text).replace(/\*\*|__|`/g, ''), 160)}"`, live && st === 'streaming' && !text.done ? h('span', { class: 'cursor' }) : ''));
+  if (text) out.push(h('span', { class: 'sumtxt' }, `🤖 "${trunc(firstLine(text.text).replace(/\*\*|__|`/g, ''), 160)}"`, live && !text.done ? h('span', { class: 'cursor' }) : ''));
   for (const b of blocks.filter(b => b.type === 'tool_use')) {
     const t = S.tools.get(b.id) || {};
     const arg = mainArg(b.name, b.input, b.partial);
-    const mark = t.result ? (t.isError ? ' ✗' : ' ✓') : t.missing ? ' ∅' : b.done ? ' ⏳' : ' …';
+    const mark = t.collision ? ' ⚠' : t.result ? (t.isError ? ' ✗' : ' ✓') : t.missing ? ' ∅' : b.done ? ' ⏳' : ' …';
     out.push(h('span', { class: 'tchip' + (t.isError ? ' err' : ''), title: `${b.name} ${arg}` }, `▶ ${b.name}`, arg ? h('span', { class: 'arg' }, '· ' + arg) : '', mark));
   }
   if (!out.length) out.push(h('span', { class: 'faint' }, ex.errors.length ? 'no reply' : live ? '…' : '(empty)'));
   return out;
 }
 
-// --- expanded body ---------------------------------------------------
+// =====================================================================
+// Detail pane (right)
+// =====================================================================
 function section(ex, name, def, acc, titleFn, bodyFn) {
   const key = `${ex.id}:sec:${name}`;
-  const el = h('section', { class: 'sec ' + acc });
+  const el = h('section', { class: 'sec ' + acc, 'data-sec': name });
   const draw = () => {
     const open = isOpen(key, def);
     el.classList.toggle('open', open);
-    el.replaceChildren(h('div', { class: 'sechead', onclick: e => { e.stopPropagation(); if (e.target.closest('a,button,.link')) return; UI.set(key, !open); draw(); } },
+    el.replaceChildren(h('div', { class: 'sechead', role: 'button', 'aria-expanded': String(open), onclick: e => { e.stopPropagation(); if (e.target.closest('a,button,.link')) return; UI.set(key, !open); draw(); } },
       h('span', { class: 'caret' }, open ? '▾' : '▸'), safe(titleFn)));
     if (open) el.append(h('div', { class: 'secbody' }, safe(bodyFn)));
   };
@@ -1137,17 +1328,53 @@ function section(ex, name, def, acc, titleFn, bodyFn) {
   return el;
 }
 const SECTION_DEFAULTS = { system: true, tools: false, history: false, new: true, reply: true, changes: false, stats: false, raw: false };
+function setAllSections(ex, open) { for (const n of Object.keys(SECTION_DEFAULTS)) UI.set(`${ex.id}:sec:${n}`, open); }
 
-function setAllSections(ex, open) {
-  for (const n of Object.keys(SECTION_DEFAULTS)) UI.set(`${ex.id}:sec:${n}`, open);
+function renderDetail() {
+  const body = $('#detailBody'), scroller = $('#detailScroll');
+  const id = V.selected, ex = S.ex.get(id);
+  V.rendered = null;
+  if (id == null) {
+    $('#detailHead').replaceChildren(h('span', { class: 'muted' }, 'No request selected'));
+    $('#detailNotice').replaceChildren();
+    body.replaceChildren(h('div', { class: 'placeholder' }, S.ex.size ? 'Select a request in the list.' : 'Waiting for traffic…'));
+    return;
+  }
+  if (!ex) {
+    $('#detailHead').replaceChildren(backBtn(), h('span', { class: 'big' }, '#' + id));
+    $('#detailNotice').replaceChildren();
+    body.replaceChildren(h('div', { class: 'placeholder' }, S.replaying ? 'Loading…' : `Request #${id} is no longer available: it was evicted from the replay buffer. Select another request in the list.`));
+    return;
+  }
+  renderDetailHead(ex);
+  renderBody(ex, body);
+  V.rendered = id;
+  scroller.scrollTop = V.detailScroll.get(id) || 0;
+}
+function backBtn() { return h('button', { id: 'backBtn', onclick: () => showList() }, '← list'); }
+const isNarrow = () => matchMedia('(max-width: 900px)').matches;
+function showList() {
+  document.body.classList.remove('show-detail');
+  const a = V.narrowAnchor; V.narrowAnchor = null;
+  if (a?.id != null) restoreListAnchor(a); else if (a) listScroll.scrollTop = a.top;
+  $('#list').focus({ preventScroll: true });
 }
 
-function renderBody(ex) {
-  const b = ex.dom.body;
-  ex.dom.secs = {};
-  const tb = h('div', { class: 'toolbar' },
-    h('button', { onclick: e => { e.stopPropagation(); setAllSections(ex, true); renderBody(ex); } }, 'Expand all'),
-    h('button', { onclick: e => { e.stopPropagation(); setAllSections(ex, false); renderBody(ex); } }, 'Collapse all'));
+function renderDetailHead(ex) {
+  const th = S.threads.get(ex.thread);
+  $('#detailHead').replaceChildren(...[backBtn(), h('span', { class: 'big' }, '#' + ex.id), span('num', fmtTime(ex.t)),
+    ...(ex.kind === 'msg' ? [sessTag(ex.session), threadTag(th), span('num', shortModel(modelOf(ex)), modelOf(ex))] : [h('span', { class: 'mono' }, `${ex.method} ${ex.path}`)]),
+    ...lifeChips(ex), span('num lat', fmtDur((ex.resp?.tEnd ?? Date.now()) - ex.t)),
+    h('span', { class: 'spacer' }),
+    h('button', { title: `Open every section of #${ex.id}`, onclick: () => { setAllSections(ex, true); renderBody(ex, $('#detailBody')); } }, `Expand all sections of #${ex.id}`),
+    h('button', { title: `Close every section of #${ex.id}`, onclick: () => { setAllSections(ex, false); renderBody(ex, $('#detailBody')); } }, 'Collapse all')].filter(x => x !== ''));
+  const n = $('#detailNotice');
+  if (!visible(ex)) n.replaceChildren('This request is hidden by the current filters.', h('button', { onclick: () => { F.force.add(ex.id); applyFilters(); revealRow(ex.id); } }, 'Show it in the list'));
+  else n.replaceChildren();
+}
+
+function renderBody(ex, target) {
+  ex.dom.secs = {}; ex.dom.replyBox = null; ex.dom.logBox = null; ex.dom.rawStatic = null;
   const secs = [];
   if (ex.kind === 'msg') {
     const r = ex.request;
@@ -1172,7 +1399,7 @@ function renderBody(ex) {
       () => [h('span', { class: 't' }, `New in this request (${nm.length})`), P ? h('span', { class: 'hint' }, 'since ', exLink(P.id)) : h('span', { class: 'hint' }, 'first request of the thread')],
       () => renderMessages(ex, nm, ex.newStart, 'new')));
     secs.push(section(ex, 'reply', SECTION_DEFAULTS.reply, 'acc-reply',
-      () => [h('span', { class: 't' }, 'Reply'), h('span', { class: 'hint' }, `${ex.blocks.filter(Boolean).length} block(s)`), ex.resp?.stop_reason ? span('tag', ex.resp.stop_reason) : '', !ex.done ? span('chip state-live', state(ex)) : ''],
+      () => [h('span', { class: 't' }, 'Reply'), h('span', { class: 'hint' }, `${ex.blocks.filter(Boolean).length} block(s)`), ex.resp?.stop_reason ? span('tag', ex.resp.stop_reason) : ''],
       () => renderReply(ex)));
     secs.push(section(ex, 'changes', SECTION_DEFAULTS.changes, 'acc-changes',
       () => [h('span', { class: 't' }, 'Changes since previous request'), h('span', { class: 'hint' }, changesHint(ex))],
@@ -1182,9 +1409,9 @@ function renderBody(ex) {
     () => [h('span', { class: 't' }, 'Stats'), h('span', { class: 'hint' }, ex.resp?.usage ? `${fmtTok(tokIn(ex.resp.usage))} in · ${fmtTok(ex.resp.usage.output_tokens || 0)} out · ${fmtCost(costOf(ex))}` : '')],
     () => renderStats(ex)));
   secs.push(section(ex, 'raw', ex.kind !== 'msg' ? true : SECTION_DEFAULTS.raw, 'acc-raw',
-    () => [h('span', { class: 't' }, 'Raw'), h('span', { class: 'hint' }, `request ${fmtBytes(ex.reqBytes)} · response ${fmtBytes(ex.resp?.respBytes ?? 0)}`)],
+    () => [h('span', { class: 't' }, 'Raw'), h('span', { class: 'hint' }, `request ${fmtBytes(ex.reqBytes)} · response ${fmtBytes(ex.resp?.respBytes ?? 0)} · ${ex.log.length + ex.logOmitted} events`)],
     () => renderRaw(ex)));
-  b.replaceChildren(tb, ...secs);
+  target.replaceChildren(...secs);
 }
 
 function systemText(s) {
@@ -1220,16 +1447,41 @@ function renderTools(ex, tools, sameAs) {
   return list();
 }
 
+// --- reply: keyed per block, so a streaming update replaces only the block that changed ---
+function blockSig(ex, b) {
+  if (!b) return '-';
+  const t = b.id ? S.tools.get(b.id) : null;
+  const call = b.id ? S.agentCalls.find(c => c.toolUseId === b.id && c.thread) : null;
+  return [b.type, b.done ? 1 : 0, (b.text || '').length, (b.thinking || '').length, (b.partial || '').length, b.input === undefined ? 0 : 1, b.incomplete ? 1 : 0,
+    t ? [t.resultEx, t.isError, t.missing, t.collision].join(',') : '', call ? call.thread : '', ex.done ? 1 : 0].join('|');
+}
 function renderReply(ex) {
-  const out = [];
-  const blocks = ex.blocks.filter(Boolean);
-  for (const e of ex.errors) out.push(h('div', { class: 'errbanner', style: 'margin:0 0 6px' }, errSummary(e)));
-  if (!blocks.length) out.push(h('div', { class: 'muted' }, ex.done ? '(no content)' : '⏳ waiting for the model…'));
-  const msgs = h('div', { class: 'msgs' });
-  blocks.forEach((b, i) => msgs.append(assistantBlock(ex, b, `${ex.id}:reply:${i}`, { live: !ex.done })));
-  out.push(msgs);
-  if (ex.resp?.aborted) out.push(h('div', { class: 'warnbox' }, 'The agent closed the connection before the reply finished.'));
-  return out;
+  const head = h('div');
+  const box = h('div', { class: 'msgs' });
+  const foot = h('div');
+  ex.dom.replyBox = { head, box, foot, sigs: [] };
+  patchReply(ex, true);
+  return [head, box, foot];
+}
+function patchReply(ex, initial) {
+  const R = ex.dom.replyBox;
+  if (!R || (!initial && !R.box.isConnected)) { if (!initial) ex.dom.secs.reply?.(); return; }
+  R.head.replaceChildren(...ex.errors.map(e => h('div', { class: 'errbanner', style: 'margin:0 0 6px' }, errSummary(e))));
+  const blocks = ex.blocks;
+  for (let i = 0; i < blocks.length; i++) {
+    const s = blockSig(ex, blocks[i]);
+    if (R.sigs[i] === s) continue;
+    R.sigs[i] = s;
+    let w = R.box.children[i];
+    if (!w) { w = h('div', { class: 'blk', 'data-i': i }); R.box.append(w); }
+    w.replaceChildren(...[].concat(assistantBlock(ex, blocks[i], `${ex.id}:reply:${i}`, { live: !ex.done })));
+  }
+  while (R.box.children.length > blocks.length) R.box.lastElementChild.remove();
+  R.sigs.length = blocks.length;
+  const foot = [];
+  if (!blocks.filter(Boolean).length) foot.push(h('div', { class: 'muted' }, ex.done ? '(no content)' : '⏳ waiting for the model…'));
+  if (lifecycle(ex).s === 'interrupted') foot.push(h('div', { class: 'warnbox' }, 'Interrupted: the agent closed the connection before the reply finished. Partial content is shown above.'));
+  R.foot.replaceChildren(...foot);
 }
 
 // --- changes ---------------------------------------------------------
@@ -1259,14 +1511,12 @@ function paramChanges(P, ex) {
   return out;
 }
 const HDRS = ['anthropic-beta', 'anthropic-version', 'user-agent'];
-const hget = (hs, n) => (hs.find(([k]) => k.toLowerCase() === n) || [])[1];
 function headerChanges(P, ex) { return HDRS.map(n => [n, hget(P.headers, n), hget(ex.headers, n)]).filter(([, a, b]) => a !== b); }
 
 function renderChanges(ex) {
   const P = S.ex.get(ex.prev);
   if (!P) return h('div', { class: 'muted' }, ex.prev ? `The previous request (#${ex.prev}) has been evicted.` : 'First request of this thread — nothing to compare.');
   const out = [h('div', { class: 'muted', style: 'margin-bottom:6px' }, 'Compared with ', exLink(P.id), ', the previous request of thread ', threadTag(S.threads.get(ex.thread)), '.')];
-  // messages
   const m = h('div', { class: 'chg' }, h('div', { class: 'lbl' }, 'messages'));
   if (!ex.rewrite) m.append(h('div', { class: 'ok' }, `+${ex.mh.length - P.mh.length} appended (${ex.mh.length} total)`));
   else {
@@ -1275,12 +1525,10 @@ function renderChanges(ex) {
     m.append(diffView(diffLines(P.request.messages.map(msgSummaryLine).join('\n'), ex.request.messages.map(msgSummaryLine).join('\n')), 2));
   }
   out.push(m);
-  // system
   const s = h('div', { class: 'chg' }, h('div', { class: 'lbl' }, 'system'));
   if (P.sysSig === ex.sysSig) s.append(h('div', { class: 'muted' }, 'unchanged'));
   else s.append(diffView(diffLines(systemText(P.request.system), systemText(ex.request.system))));
   out.push(s);
-  // tools
   const t = h('div', { class: 'chg' }, h('div', { class: 'lbl' }, 'tools'));
   if (P.toolsSig === ex.toolsSig) t.append(h('div', { class: 'muted' }, 'unchanged'));
   else {
@@ -1295,14 +1543,12 @@ function renderChanges(ex) {
     if (!added.length && !removed.length && !changed.length) t.append(h('div', { class: 'muted' }, 'same tools; only the order or cache markers changed'));
   }
   out.push(t);
-  // params
   const pc = paramChanges(P, ex);
   const p = h('div', { class: 'chg' }, h('div', { class: 'lbl' }, 'params'));
   if (!pc.length) p.append(h('div', { class: 'muted' }, 'unchanged (' + Object.keys(ex.request).filter(k => !PARAM_SKIP.has(k)).join(', ') + ')'));
   else p.append(h('table', { class: 't' }, h('tr', null, h('th', null, 'field'), h('th', null, 'before'), h('th', null, 'after')),
     pc.map(([k, a, b]) => h('tr', null, h('td', { class: 'mono' }, k), h('td', { class: 'mono' }, trunc(a ?? '—', 300)), h('td', { class: 'mono' }, trunc(b ?? '—', 300))))));
   out.push(p);
-  // headers
   const hc = headerChanges(P, ex);
   const hd = h('div', { class: 'chg' }, h('div', { class: 'lbl' }, 'headers'));
   if (!hc.length) hd.append(h('div', { class: 'muted' }, 'unchanged (' + HDRS.join(', ') + ')'));
@@ -1312,14 +1558,14 @@ function renderChanges(ex) {
   return out;
 }
 
-// --- stats & raw -----------------------------------------------------
+// --- stats -----------------------------------------------------------
 function renderStats(ex) {
   const u = ex.resp?.usage || {};
   const cp = costParts(modelOf(ex), ex.resp?.usage);
   const row = (k, v, c, title) => h('tr', null, h('td', null, k), h('td', { class: 'n', title }, v), h('td', { class: 'n' }, c ?? ''));
   const r = ex.resp || {};
   const rel = t => t != null ? t - ex.t : null;
-  return h('div', { style: 'display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px' },
+  return h('div', { style: 'display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px' },
     h('div', null, h('table', { class: 't' }, h('tr', null, h('th', null, 'tokens'), h('th', { class: 'n' }, 'count'), h('th', { class: 'n' }, 'cost')),
       row('input', fmtTok(u.input_tokens || 0), cp && fmtCost(cp.input), exact(u.input_tokens || 0)),
       row('cache read', fmtTok(u.cache_read_input_tokens || 0), cp && fmtCost(cp.cache_read), exact(u.cache_read_input_tokens || 0)),
@@ -1336,28 +1582,99 @@ function renderStats(ex) {
       ex.kind === 'msg' ? row('messages', exact(ex.request.messages.length)) : '')));
 }
 
+// --- raw: upstream data (final) and the live dashboard event log ------
 function headersTable(hs) {
   return h('table', { class: 't mono' }, (hs || []).map(([k, v]) => h('tr', null, h('td', null, k), h('td', null, v))));
 }
 function renderRaw(ex) {
+  const staticBox = h('div');
+  ex.dom.rawStatic = staticBox;
+  staticBox.append(...rawStatic(ex));
+  return [staticBox, logFold(ex)];
+}
+function patchRaw(ex) {
+  if (ex.dom.rawStatic?.isConnected) ex.dom.rawStatic.replaceChildren(...rawStatic(ex));
+}
+function rawStatic(ex) {
   const k = `${ex.id}:raw`;
   const r = ex.resp || {};
   const reqText = () => typeof ex.request === 'string' ? ex.request : JSON.stringify(ex.request, null, 2);
+  const cleanBlocks = () => ex.blocks.filter(Boolean).map(({ done, stopped, ...b }) => b);
   const out = [
-    fold(k + ':rqh', false, () => [h('b', null, 'Request headers'), h('span', { class: 'faint' }, '(credentials masked)'), copyBtn(() => (ex.headers || []).map(([a, b]) => `${a}: ${b}`).join('\n'))], () => headersTable(ex.headers)),
+    fold(k + ':rqh', false, () => [h('b', null, 'Request headers'), h('span', { class: 'faint' }, '(credentials masked)'), copyBtn(() => (ex.headers || []).map(([a, b]) => `${a}: ${b}`).join('\n'))],
+      () => [headersTable(ex.headers), fold(k + ':rqhj', false, [h('span', { class: 'faint' }, 'as JSON')], () => jsonTree(k + ':rqhjt', Object.fromEntries(ex.headers), 1))]),
     fold(k + ':rqj', false, () => [h('b', null, 'Request body'), h('span', { class: 'faint' }, fmtBytes(ex.reqBytes)), copyBtn(reqText)],
-      () => ex.request == null ? h('div', { class: 'muted' }, '(empty)') : typeof ex.request === 'object' ? jsonTree(k + ':rqjt', ex.request, 1) : longText(k + ':rqjs', ex.request, { lines: 40, mono: true })),
-    fold(k + ':rsh', false, () => [h('b', null, 'Response headers'), r.status ? h('span', { class: 'faint' }, `${r.status} ${r.reason || ''}`) : '', copyBtn(() => (r.headers || []).map(([a, b]) => `${a}: ${b}`).join('\n'))], () => r.headers ? headersTable(r.headers) : h('div', { class: 'muted' }, 'no response yet')),
-    fold(k + ':rsb', false, () => [h('b', null, r.json ? 'Response JSON' : 'Raw response (SSE)'), h('span', { class: 'faint' }, fmtBytes(r.respBytes ?? 0)), r.rawTruncated ? span('warn', 'truncated') : '', copyBtn(() => r.raw || '')],
-      () => !ex.done ? h('div', { class: 'muted' }, 'available when the response ends') : r.json ? jsonTree(k + ':rsj', r.json, 2) : longText(k + ':rss', r.raw || '(empty)', { lines: 40, maxChars: 20000, mono: true })),
+      () => ex.request == null ? h('div', { class: 'jnote' }, 'empty — the request had no body') : typeof ex.request === 'object' ? jsonTree(k + ':rqjt', ex.request, 1) : [h('div', { class: 'jnote' }, 'not JSON — shown as text'), longText(k + ':rqjs', ex.request, { lines: 40, mono: true })]),
+    fold(k + ':rsh', false, () => [h('b', null, 'Response headers'), r.status ? h('span', { class: 'faint' }, `${r.status} ${r.reason || ''}`) : '', copyBtn(() => (r.headers || []).map(([a, b]) => `${a}: ${b}`).join('\n'))],
+      () => r.headers ? headersTable(r.headers) : h('div', { class: 'jnote' }, 'unavailable — no response headers yet')),
+    fold(k + ':blk', false, () => [h('b', null, 'Assembled content blocks'), h('span', { class: 'faint' }, ex.done ? 'final' : 'provisional, still streaming')],
+      () => ex.blocks.filter(Boolean).length ? jsonTree(k + ':blkt', cleanBlocks(), 2) : h('div', { class: 'jnote' }, 'empty — no content blocks')),
+    fold(k + ':rsb', false, () => [h('b', null, r.json ? 'Upstream response JSON' : 'Upstream raw response'), h('span', { class: 'faint' }, fmtBytes(r.respBytes ?? 0)), r.rawTruncated ? span('warn', 'truncated') : '', ex.done ? copyBtn(() => r.raw || '') : ''],
+      () => !ex.done ? h('div', { class: 'jnote' }, 'unavailable until the response ends — see the dashboard events below for live progress')
+        : r.json ? jsonTree(k + ':rsj', r.json, 2, { truncated: r.rawTruncated })
+          : [r.rawTruncated ? h('div', { class: 'warn' }, '⚠ truncated by the recorder') : '', longText(k + ':rss', r.raw || '', { lines: 40, maxChars: 20000, mono: true }), !r.raw ? h('div', { class: 'jnote' }, 'empty response body') : '']),
   ];
   ex.errors.forEach((e, i) => out.push(fold(`${k}:err:${i}`, true, () => [h('b', { class: 'bad' }, `Error: ${e.kind}`), e.status ? span('faint', String(e.status)) : ''],
     () => typeof e.body === 'object' && e.body ? jsonTree(`${k}:errj:${i}`, e.body, 3) : h('pre', { class: 'mono' }, String(e.body ?? '')))));
   return out;
 }
 
+function logSummary(ex, e) {
+  if (e.name === 'block_delta') return `index ${e.index} · ${e.kind} · ×${e.n} · ${fmtChars(e.chars)}`;
+  const d = e.data || {};
+  switch (e.name) {
+    case 'exchange_start': return `${d.method} ${d.path} · ${fmtBytes(d.request_bytes || 0)}`;
+    case 'response_start': return d.model ? `message_start · ${shortModel(d.model)}` : `status ${d.status}`;
+    case 'block_start': return `index ${d.index} · ${d.type}${d.name ? ' · ' + d.name : ''}`;
+    case 'block_stop': return `index ${d.index}${d.input !== undefined ? ' · input final' : ''}`;
+    case 'response_end': return `status ${d.status} · ${d.stop_reason || '—'}${d.aborted ? ' · client closed' : ''}`;
+    case 'exchange_error': return `${d.kind} ${d.status ?? ''}`;
+    default: return '';
+  }
+}
+function logPayload(e) {
+  if (e.name !== 'block_delta') return e.data;
+  return { index: e.index, kind: e.kind, events: e.n, chars: e.chars, [e.kind]: e.preview + (e.preview.length < e.chars ? '…(preview truncated)' : '') };
+}
+function logRow(ex, e) {
+  const t0 = e.t != null ? `+${fmtDur(e.t - ex.t)}` : '';
+  const cls = e.name === 'exchange_error' ? ' e-err' : e.name === 'response_end' ? ' e-end' : '';
+  return fold(`${ex.id}:log:${e.seq}`, false, () => [h('span', { class: 'seq' }, String(e.seq)), h('span', { class: 'lt0' }, t0), h('span', { class: 'ev' + cls }, e.name), h('span', { class: 'muted' }, logSummary(ex, e))],
+    () => jsonTree(`${ex.id}:logj:${e.seq}`, logPayload(e), 1), 'logrow');
+}
+function logFold(ex) {
+  return fold(`${ex.id}:log`, true, () => [h('b', null, 'Dashboard events'), h('span', { class: 'faint' }, `${ex.log.length} shown${ex.logOmitted ? ` · ${ex.logOmitted} omitted (memory bound)` : ''}`), span('tag', 'normalized by the proxy, not the exact upstream bytes')],
+    () => {
+      const note = h('div', { class: 'lognote' });
+      const box = h('div', { class: 'logbox', role: 'log', 'aria-label': `Dashboard events of #${ex.id}` });
+      const more = h('button', { class: 'lognew', hidden: true, onclick: () => { box.scrollTop = box.scrollHeight; more.hidden = true; ex.dom.logBox.unseen = 0; } });
+      box.addEventListener('scroll', () => { if (box.scrollTop + box.clientHeight >= box.scrollHeight - 4) { more.hidden = true; ex.dom.logBox.unseen = 0; } });
+      ex.dom.logBox = { box, note, more, rendered: new Map(), lastSeq: 0, omitted: -1, unseen: 0 };
+      patchLog(ex, true);
+      return [note, box, more];
+    });
+}
+function patchLog(ex, initial) {
+  const LB = ex.dom.logBox;
+  if (!LB || !LB.box.isConnected && !initial) return;
+  const { box } = LB;
+  const atBottom = initial || box.scrollTop + box.clientHeight >= box.scrollHeight - 4;
+  if (LB.omitted !== ex.logOmitted) { box.replaceChildren(); LB.rendered.clear(); LB.lastSeq = 0; LB.omitted = ex.logOmitted; }
+  let added = 0;
+  for (const e of ex.log) {
+    const r = LB.rendered.get(e.seq);
+    if (r) { if (e.name === 'block_delta' && r.n !== e.n) { const nr = logRow(ex, e); r.el.replaceWith(nr); LB.rendered.set(e.seq, { el: nr, n: e.n }); } continue; }
+    const el = logRow(ex, e);
+    box.append(el); LB.rendered.set(e.seq, { el, n: e.n }); added++;
+  }
+  const replayed = ex.log.some(e => e.replayed);
+  LB.note.replaceChildren(replayed ? 'Replayed from the proxy\'s buffer: stream deltas of completed requests are compacted away there, so this history is retained, not complete.' : '');
+  if (atBottom) box.scrollTop = box.scrollHeight;
+  else if (added) { LB.unseen += added; LB.more.hidden = false; LB.more.textContent = `↓ ${LB.unseen} new event${LB.unseen === 1 ? '' : 's'}`; }
+}
+
 // =====================================================================
-// Visibility, filters, sidebar
+// Visibility, filters, controls
 // =====================================================================
 function visible(ex) {
   if (F.force.has(ex.id)) return true;
@@ -1368,16 +1685,17 @@ function visible(ex) {
   if (F.search && !searchText(ex).includes(F.search)) return false;
   return true;
 }
-function applyVisibility(ex) { if (ex.dom) ex.dom.card.hidden = !visible(ex); }
+function applyVisibility(ex) { if (ex.dom) ex.dom.row.hidden = !visible(ex); }
 function applyFilters() {
-  withAnchor(() => { for (const ex of S.ex.values()) applyVisibility(ex); });
+  keepListAnchor(() => { for (const ex of S.ex.values()) applyVisibility(ex); });
   document.body.classList.toggle('hide-thinking', !$('#kThinking').checked);
   document.body.classList.toggle('hide-reminders', !$('#kReminders').checked);
   $('#fErrors').checked = F.errorsOnly;
   $('#errBtn').classList.toggle('active', F.errorsOnly);
-  // highlight matching pairs in open cards
-  let css = [...F.tools].map(t => `.pair[data-tool="${CSS.escape(t)}"]`).join(',');
+  const css = [...F.tools].map(t => `.pair[data-tool="${CSS.escape(t)}"]`).join(',');
   $('#hlStyle').textContent = css ? css + '{outline:2px solid var(--acc-call);outline-offset:1px}' : '';
+  // Filters never replace the selection; a hidden selection keeps its details, with a notice.
+  const sel = S.ex.get(V.selected); if (sel) renderDetailHead(sel);
   S.sideDirty = true; scheduleFlush();
 }
 
@@ -1392,36 +1710,46 @@ function toolStats() {
   }
   return [...m.values()].sort((a, b) => b.calls - a.calls || a.name.localeCompare(b.name));
 }
-
 function toggleTool(name) { if (F.tools.has(name)) F.tools.delete(name); else F.tools.add(name); applyFilters(); }
 
-let lastSideSig = '';
-function renderSidebar() {
+let lastCtlSig = '';
+function renderControls() {
   const groups = new Map();
   for (const th of S.threads.values()) {
     let g = groups.get(th.group);
-    if (!g) groups.set(th.group, g = { group: th.group, name: th.kind === 'side' ? 'side calls' : th.name, color: th.color, n: 0, th });
+    if (!g) groups.set(th.group, g = { group: th.group, session: th.session, name: th.kind === 'side' ? 'side calls' : th.name, color: th.color, n: 0, th });
     g.n += th.ids.length;
   }
   const ts = toolStats();
   const nonmsg = [...S.ex.values()].filter(e => e.kind === 'nonmsg').length;
-  const sigStr = JSON.stringify([[...groups.values()].map(g => [g.group, g.n, F.groups.get(g.group)]), ts.map(t => [t.name, t.calls, t.errors]), [...F.tools], nonmsg]);
+  const active = [...F.groups].filter(([g, v]) => v !== !g.endsWith('|side')).length + F.tools.size + (F.errorsOnly ? 1 : 0) + (F.showNonMsg ? 1 : 0) + (F.search ? 1 : 0);
+  $('#ctlCount').textContent = active ? `${active} active` : '';
   $('#nonMsgCount').textContent = nonmsg ? `(${nonmsg})` : '';
-  if (sigStr === lastSideSig) return;
-  lastSideSig = sigStr;
-  const dyn = $('#sideDyn');
+  const sigStr = JSON.stringify([[...groups.values()].map(g => [g.group, g.n, F.groups.get(g.group)]), ts.map(t => [t.name, t.calls, t.errors]), [...F.tools], S.sessions.size]);
+  if (sigStr === lastCtlSig) return;
+  lastCtlSig = sigStr;
   const thr = [h('h4', null, 'Threads')];
   if (!groups.size) thr.push(h('div', { class: 'faint' }, 'none yet'));
-  for (const g of groups.values()) {
-    const cb = h('input', { type: 'checkbox', checked: F.groups.get(g.group) !== false, onchange: e => { F.groups.set(g.group, e.target.checked); applyFilters(); } });
-    const startLink = g.th.startedBy ? h('span', { class: 'faint' }, exLink(g.th.startedBy.exId, '↖')) : '';
-    thr.push(h('label', null, cb, h('span', { class: 'ttag', style: `--tc:${g.color}` }, g.name), h('span', { class: 'faint' }, String(g.n)), startLink));
+  for (const sess of S.sessions.values()) {
+    const gs = [...groups.values()].filter(g => g.session === sess.key);
+    if (!gs.length) continue;
+    if (multiSession()) {
+      const all = gs.every(g => F.groups.get(g.group) !== false);
+      thr.push(h('label', { class: 'sesshead', title: 'Claude Code session ' + (sess.sid || 'unknown') },
+        h('input', { type: 'checkbox', checked: all, onchange: e => { for (const g of gs) F.groups.set(g.group, e.target.checked); applyFilters(); } }), `session ${sess.label}`));
+    }
+    for (const g of gs) {
+      const cb = h('input', { type: 'checkbox', checked: F.groups.get(g.group) !== false, onchange: e => { F.groups.set(g.group, e.target.checked); applyFilters(); } });
+      const startLink = g.th.startedBy ? h('span', { class: 'faint' }, exLink(g.th.startedBy.exId, '↖')) : '';
+      thr.push(h('label', { style: multiSession() ? 'padding-left:14px' : '' }, cb, h('span', { class: 'ttag', style: `--tc:${g.color}` }, g.name), h('span', { class: 'faint' }, String(g.n)), startLink));
+    }
   }
+  $('#ctlThreads').replaceChildren(...thr);
   const tl = [h('h4', null, 'Tools', F.tools.size ? h('a', { class: 'link', style: 'float:right;text-transform:none', onclick: () => { F.tools.clear(); applyFilters(); } }, 'clear') : '')];
   if (!ts.length) tl.push(h('div', { class: 'faint' }, 'none yet'));
-  for (const t of ts) tl.push(h('div', { class: 'toolrow' + (F.tools.has(t.name) ? ' sel' : ''), onclick: () => toggleTool(t.name), title: 'filter the feed to requests using ' + t.name },
+  for (const t of ts) tl.push(h('div', { class: 'toolrow' + (F.tools.has(t.name) ? ' sel' : ''), onclick: () => toggleTool(t.name), title: 'show only requests using ' + t.name },
     h('span', null, t.name), h('span', { class: 'num' }, String(t.calls), t.errors ? h('span', { class: 'bad' }, ` ⚠${t.errors}`) : '')));
-  dyn.replaceChildren(...thr, ...tl);
+  $('#ctlTools').replaceChildren(...tl);
 }
 
 // =====================================================================
@@ -1430,7 +1758,7 @@ function renderSidebar() {
 function totals() {
   let req = 0, tin = 0, tout = 0, cost = 0, unknown = 0, apiErr = 0;
   for (const ex of S.ex.values()) {
-    if (ex.errors.length) apiErr++;
+    if (apiFailed(ex)) apiErr++;
     if (ex.kind !== 'msg') continue;
     req++;
     const u = ex.resp?.usage; if (!u) continue;
@@ -1443,9 +1771,9 @@ function totals() {
 
 function renderHeader() {
   const T = totals();
-  const inflight = [...S.ex.values()].filter(e => !e.done && !(e.errors.length && e.errors.some(x => x.kind === 'unreachable')));
+  const inflight = [...S.ex.values()].filter(e => !e.done && !apiFailed(e));
   $('#inflight').textContent = inflight.length ? `· ${inflight.length} in flight (${fmtDur(Date.now() - Math.min(...inflight.map(e => e.t)))})` : '';
-  $('#totals').replaceChildren('Requests ', h('b', null, String(T.req)), ' · Tokens ', h('b', { title: exact(T.tin) }, fmtTok(T.tin)), ' in / ', h('b', { title: exact(T.tout) }, fmtTok(T.tout)), ' out · Cost ',
+  $('#totals').replaceChildren('Requests ', h('b', null, String(T.req)), multiSession() ? ` (${S.sessions.size} sessions)` : '', ' · Tokens ', h('b', { title: exact(T.tin) }, fmtTok(T.tin)), ' in / ', h('b', { title: exact(T.tout) }, fmtTok(T.tout)), ' out · Cost ',
     h('b', { title: T.unknown ? `${T.unknown} request(s) with an unpriced model are not included` : `$${T.cost.toFixed(6)}` }, fmtCost(T.cost) + (T.unknown ? ' + ?' : '')));
   const n = T.apiErr + T.toolErr;
   const eb = $('#errBtn');
@@ -1476,22 +1804,21 @@ function renderStatsPanel(force) {
     h('tr', null, h('th', null, ''), h('th', { class: 'n' }, 'requests'), h('th', { class: 'n' }, 'in'), h('th', { class: 'n' }, 'out'), h('th', { class: 'n' }, 'cost')),
     rows.map(r => h('tr', null, h('td', null, nameFn(r.k)), h('td', { class: 'n' }, String(r.n)), h('td', { class: 'n', title: exact(r.tin) }, fmtTok(r.tin)),
       h('td', { class: 'n', title: exact(r.tout) }, fmtTok(r.tout)), h('td', { class: 'n' }, r.unknown && !r.cost ? '—' : fmtCost(r.cost) + (r.unknown ? ' + ?' : ''))))));
-  const threadName = k => { const th = S.threads.get(k); return th ? (th.kind === 'side' ? threadTag({ ...th, name: 'side calls' }) : threadTag(th)) : k; };
+  const groupName = k => { const th = [...S.threads.values()].find(t => t.group === k); return th ? [sessTag(th.session), ' ', threadTag(th.kind === 'side' ? { ...th, name: 'side calls' } : th)] : k; };
   const ts = toolStats();
   const toolTable = h('div', null, h('h3', null, 'Tool usage (click to filter)'), ts.length ? h('table', { class: 't' },
     h('tr', null, h('th', null, 'tool'), h('th', { class: 'n' }, 'calls'), h('th', { class: 'n' }, 'errors'), h('th', { class: 'n' }, 'avg result'), h('th', { class: 'n' }, 'avg call→result')),
     ts.map(t => h('tr', { class: 'click' + (F.tools.has(t.name) ? ' sel' : ''), onclick: () => { toggleTool(t.name); renderStatsPanel(true); } },
       h('td', null, t.name), h('td', { class: 'n' }, String(t.calls)), h('td', { class: 'n' + (t.errors ? ' bad' : '') }, t.errors ? '✗ ' + t.errors : '0'),
       h('td', { class: 'n' }, t.nres ? fmtBytes(Math.round(t.size / t.nres)) : '—'), h('td', { class: 'n' }, t.ntime ? fmtDur(t.time / t.ntime) : '—')))) : h('div', { class: 'faint' }, 'no tool calls yet'));
-  const groupKey = ex => { const th = S.threads.get(ex.thread); return th?.kind === 'side' ? 'side:1' : ex.thread; };
   p.replaceChildren(
-    h('div', null, h('h3', null, 'Session'), h('table', { class: 't' },
+    h('div', null, h('h3', null, 'Session totals'), h('table', { class: 't' },
       h('tr', null, h('td', null, 'message requests'), h('td', { class: 'n' }, String(T.req))),
       h('tr', null, h('td', null, 'tokens in / out'), h('td', { class: 'n' }, `${fmtTok(T.tin)} / ${fmtTok(T.tout)}`)),
       h('tr', null, h('td', null, 'cost'), h('td', { class: 'n' }, fmtCost(T.cost) + (T.unknown ? ` + ? (${T.unknown} unpriced)` : ''))),
       h('tr', null, h('td', null, 'errors'), h('td', { class: 'n' + (T.apiErr + T.toolErr ? ' bad' : '') }, `${T.apiErr} API · ${T.toolErr} tool`))),
       h('div', { class: 'faint', style: 'margin-top:4px' }, `prices as of ${S.pricesAsOf}; unknown models show —`)),
-    aggTable('By thread', agg(groupKey), threadName),
+    aggTable('By thread', agg(ex => S.threads.get(ex.thread)?.group), groupName),
     aggTable('By model', agg(ex => shortModel(modelOf(ex))), k => k),
     toolTable,
     h('div', null, h('h3', null, 'Input tokens per request'), barChart(msgs.slice(-150), ex => ex.resp?.usage ? tokIn(ex.resp.usage) : 0, fmtTok)),
@@ -1501,9 +1828,9 @@ function renderStatsPanel(force) {
 function barChart(items, valFn, fmt) {
   const wrap = h('div', { class: 'chart' });
   if (!items.length) { wrap.append(h('div', { class: 'faint' }, 'no data yet')); return wrap; }
-  const W = Math.max(280, Math.min(($('#statsPanel').clientWidth || 600) / 2 - 40, 900)), H = 110, padL = 0, padB = 16, padT = 14;
+  const W = Math.max(280, Math.min(($('#statsPanel').clientWidth || 600) / 2 - 40, 900)), H = 110, padB = 16, padT = 14;
   const vals = items.map(valFn), max = Math.max(...vals, 1e-9);
-  const slot = (W - padL) / items.length, bw = Math.max(1, slot - 2);
+  const slot = W / items.length, bw = Math.max(1, slot - 2);
   const NS = 'http://www.w3.org/2000/svg';
   const svg = document.createElementNS(NS, 'svg');
   svg.setAttribute('viewBox', `0 0 ${W} ${H}`); svg.setAttribute('height', H);
@@ -1511,10 +1838,10 @@ function barChart(items, valFn, fmt) {
   const base = H - padB;
   items.forEach((ex, i) => {
     const v = vals[i], bh = Math.max(v > 0 ? 1 : 0, (v / max) * (base - padT));
-    const x = padL + i * slot, y = base - bh, r = Math.min(4, bw / 2, bh);
+    const x = i * slot, y = base - bh, r = Math.min(4, bw / 2, bh);
     const hit = el('rect', { class: 'hit', x, y: padT, width: slot, height: base - padT });
     const bar = el('path', { class: 'bar', d: `M${x},${base} V${y + r} Q${x},${y} ${x + r},${y} H${x + bw - r} Q${x + bw},${y} ${x + bw},${y + r} V${base} Z` });
-    hit.addEventListener('mousemove', e => showTip(e, `#${ex.id} · ${threadNameText(ex)} · ${fmt(v)}`));
+    hit.addEventListener('mousemove', e => showTip(e, `#${ex.id} · ${S.threads.get(ex.thread)?.name || ex.kind} · ${fmt(v)}`));
     hit.addEventListener('mouseleave', hideTip);
     hit.addEventListener('click', () => gotoEx(ex.id));
     svg.append(hit, bar);
@@ -1526,12 +1853,11 @@ function barChart(items, valFn, fmt) {
   wrap.append(svg);
   return wrap;
 }
-const threadNameText = ex => S.threads.get(ex.thread)?.name || ex.kind;
 function showTip(e, text) { const t = $('#tip'); t.textContent = text; t.hidden = false; t.style.left = (e.clientX + 12) + 'px'; t.style.top = (e.clientY + 12) + 'px'; }
 function hideTip() { $('#tip').hidden = true; }
 
 // =====================================================================
-// Rendering loop: deltas are coalesced per animation frame
+// Rendering loop: updates are coalesced per animation frame and touch only affected regions
 // =====================================================================
 function markDirty(ex, ...what) {
   let s = S.dirty.get(ex.id); if (!s) S.dirty.set(ex.id, s = new Set());
@@ -1539,41 +1865,73 @@ function markDirty(ex, ...what) {
   scheduleFlush();
 }
 let flushQueued = false;
-function scheduleFlush() { if (!flushQueued) { flushQueued = true; requestAnimationFrame(flush); } }
+function scheduleFlush() { if (!flushQueued) { flushQueued = true; requestAnimationFrame(() => { flushQueued = false; flush(); }); } }
 function flush() {
-  flushQueued = false;
+  if (S.replaying) return;  // render once the replay is complete
   const dirty = S.dirty; S.dirty = new Map();
-  withAnchor(() => {
+  keepListAnchor(() => {
     for (const [id, what] of dirty) {
       const ex = S.ex.get(id); if (!ex?.dom) continue;
       renderRows(ex);
       applyVisibility(ex);
-      if (!ex.expanded) continue;
-      if (what.has('all')) { renderBody(ex); continue; }
-      if (what.has('reply')) ex.dom.secs.reply?.();
-      if (what.has('stats')) ex.dom.secs.stats?.();
     }
   });
+  const sel = dirty.get(V.selected);
+  const ex = S.ex.get(V.selected);
+  if (sel && ex && V.rendered === ex.id) {
+    keepDetailAnchor(() => {
+      if (sel.has('dhead')) renderDetailHead(ex);
+      if (sel.has('reply')) patchReply(ex);
+      if (sel.has('new')) ex.dom.secs.new?.();
+      if (sel.has('stats')) ex.dom.secs.stats?.();
+      if (sel.has('raw')) patchRaw(ex);
+      if (sel.has('log')) patchLog(ex);
+    });
+  }
   renderHeader();
-  if (S.sideDirty) { S.sideDirty = false; renderSidebar(); }
+  if (S.sideDirty) { S.sideDirty = false; renderControls(); }
   renderStatsPanel();
 }
 
 // Keep what the reader is looking at in place when content above it changes.
-function withAnchor(fn) {
-  if (window.scrollY < 40) { fn(); return; }
-  const top = $('#top').offsetHeight;
+// scrollTop is rounded to whole pixels while rows have fractional heights, so each correction aims at the
+// offset intended when the reader last scrolled, not at the last measured one; rounding errors cannot add up.
+const lastAnchor = new WeakMap();   // scroller -> { el, offset, st }
+function keepAnchor(scroller, candidates, fn, threshold) {
+  if (scroller.scrollTop < threshold) { lastAnchor.delete(scroller); fn(); return; }
+  const top = scroller.getBoundingClientRect().top;
   let anchor = null, before = 0;
-  for (const c of feed.children) {
-    if (c.hidden) continue;
+  for (const c of candidates()) {
+    if (c.hidden || !c.offsetParent) continue;
     const r = c.getBoundingClientRect();
-    if (r.bottom > top + 4) { anchor = c; before = r.top; break; }
+    if (r.bottom > top + 1) { anchor = c; before = r.top - top; break; }
   }
+  const prev = lastAnchor.get(scroller);
+  if (anchor && prev && prev.el === anchor && prev.st === scroller.scrollTop) before = prev.offset;
   fn();
   if (anchor && anchor.isConnected && !anchor.hidden) {
-    const after = anchor.getBoundingClientRect().top;
-    if (Math.abs(after - before) > 0.5) window.scrollBy(0, after - before);
+    const delta = anchor.getBoundingClientRect().top - scroller.getBoundingClientRect().top - before;
+    if (Math.abs(delta) > 0.25) scroller.scrollTop += delta;
+    lastAnchor.set(scroller, { el: anchor, offset: before, st: scroller.scrollTop });
   }
+}
+const keepListAnchor = fn => keepAnchor(listScroll, () => listEl.children, fn, 40);
+const keepDetailAnchor = fn => keepAnchor($('#detailScroll'), () => $('#detailBody').querySelectorAll('.sechead, .msgs > *, .logbox'), fn, 1);
+function listAnchor() {
+  if (listScroll.scrollTop < 40) return null;
+  const top = listScroll.getBoundingClientRect().top;
+  for (const c of listEl.children) {
+    if (c.hidden) continue;
+    const r = c.getBoundingClientRect();
+    if (r.bottom > top + 1) return { id: +c.dataset.id, offset: r.top - top };
+  }
+  return null;
+}
+function restoreListAnchor(a) {
+  if (!a) return;
+  const row = S.ex.get(a.id)?.dom?.row;
+  if (!row || row.hidden) return;
+  listScroll.scrollTop += row.getBoundingClientRect().top - listScroll.getBoundingClientRect().top - a.offset;
 }
 
 function updatePill() {
@@ -1581,59 +1939,52 @@ function updatePill() {
   p.hidden = S.pending === 0;
   p.textContent = `↑ ${S.pending} new request${S.pending === 1 ? '' : 's'}`;
 }
-function toTop() { window.scrollTo({ top: 0 }); S.pending = 0; updatePill(); }
+// Scrolls only the list; the selection does not change.
+function toTop() { listScroll.scrollTop = 0; S.pending = 0; updatePill(); }
 
 // =====================================================================
 // Keyboard & controls
 // =====================================================================
-const visibleCards = () => [...feed.children].filter(c => !c.hidden);
-function setFocus(ex) {
-  if (S.focus != null) S.ex.get(S.focus)?.dom?.card.classList.remove('focused');
-  S.focus = ex?.id ?? null;
-  ex?.dom?.card.classList.add('focused');
-}
-function focusMove(dir) {
-  const cards = visibleCards(); if (!cards.length) return;
-  let i = cards.findIndex(c => +c.dataset.id === S.focus);
-  if (i < 0) { const top = $('#top').offsetHeight; i = cards.findIndex(c => c.getBoundingClientRect().bottom > top); i = Math.max(0, i) - (dir > 0 ? 1 : 0); if (dir < 0) i++; }
-  const j = Math.max(0, Math.min(cards.length - 1, i + dir));
-  const ex = S.ex.get(+cards[j].dataset.id);
-  setFocus(ex); ex.dom.card.scrollIntoView({ block: 'nearest' });
+const visibleRows = () => [...listEl.children].filter(c => !c.hidden);
+function moveSelection(dir) {
+  const rows = visibleRows(); if (!rows.length) return;
+  let i = rows.findIndex(c => +c.dataset.id === V.selected);
+  const j = i < 0 ? 0 : Math.max(0, Math.min(rows.length - 1, i + dir));
+  selectEx(+rows[j].dataset.id, { reveal: true });
 }
 function jumpError(dir) {
-  const cards = visibleCards().filter(c => { const ex = S.ex.get(+c.dataset.id); return ex && hasError(ex); });
-  if (!cards.length) { toast('no errors'); return; }
-  let i = cards.findIndex(c => +c.dataset.id === S.focus);
-  i = i < 0 ? (dir > 0 ? 0 : cards.length - 1) : (i + dir + cards.length) % cards.length;
-  gotoEx(+cards[i].dataset.id, false);
+  const rows = visibleRows().filter(c => { const ex = S.ex.get(+c.dataset.id); return ex && hasError(ex); });
+  if (!rows.length) { toast('no errors'); return; }
+  let i = rows.findIndex(c => +c.dataset.id === V.selected);
+  i = i < 0 ? (dir > 0 ? 0 : rows.length - 1) : (i + dir + rows.length) % rows.length;
+  selectEx(+rows[i].dataset.id, { reveal: true });
 }
 document.addEventListener('keydown', e => {
   if (e.target.matches('input, textarea')) { if (e.key === 'Escape') e.target.blur(); return; }
   if (e.ctrlKey || e.metaKey || e.altKey) return;
-  const fx = S.ex.get(S.focus);
   switch (e.key) {
-    case 'j': focusMove(1); break;
-    case 'k': focusMove(-1); break;
-    case 'o': case 'Enter': if (fx) toggleCard(fx); break;
+    case 'j': moveSelection(1); break;
+    case 'k': moveSelection(-1); break;
+    case 'o': case 'Enter': if (V.selected != null) selectEx(V.selected, { reveal: false, focusDetail: true }); break;
     case 'Home': e.preventDefault(); toTop(); break;
     case '/': e.preventDefault(); $('#search').focus(); break;
     case 'e': jumpError(1); break;
     case 'E': jumpError(-1); break;
+    case 'Escape': if (document.body.classList.contains('show-detail')) showList(); break;
     default: return;
   }
 });
-window.addEventListener('scroll', () => { if (window.scrollY < 40 && S.pending) { S.pending = 0; updatePill(); } }, { passive: true });
+listScroll.addEventListener('scroll', () => { if (listScroll.scrollTop < 40 && S.pending) { S.pending = 0; updatePill(); } }, { passive: true });
 $('#pill').onclick = toTop;
 $('#errBtn').onclick = () => { F.errorsOnly = !F.errorsOnly; applyFilters(); };
 $('#fErrors').onchange = e => { F.errorsOnly = e.target.checked; applyFilters(); };
 $('#fNonMsg').onchange = e => { F.showNonMsg = e.target.checked; applyFilters(); };
 $('#kThinking').onchange = applyFilters;
 $('#kReminders').onchange = applyFilters;
+$('#ctlToggle').onclick = () => { const b = $('#ctlBody'); b.hidden = !b.hidden; $('#ctlToggle').setAttribute('aria-expanded', String(!b.hidden)); $('#ctlToggle').textContent = b.hidden ? 'Filters ▾' : 'Filters ▴'; };
 let searchT = 0;
 $('#search').oninput = e => { clearTimeout(searchT); searchT = setTimeout(() => { F.search = e.target.value.trim().toLowerCase(); F.force.clear(); applyFilters(); }, 150); };
 $('#statsBtn').onclick = () => { statsOpen = !statsOpen; $('#statsPanel').hidden = !statsOpen; $('#statsBtn').textContent = statsOpen ? 'Stats ▴' : 'Stats ▾'; renderStatsPanel(true); };
-$('#expandAll').onclick = () => withAnchor(() => { for (const ex of S.ex.values()) if (!ex.dom.card.hidden && !ex.expanded) toggleCard(ex, true); });
-$('#collapseAll').onclick = () => withAnchor(() => { for (const ex of S.ex.values()) if (ex.expanded) toggleCard(ex, false); });
 document.head.append(h('style', { id: 'hlStyle' }));
 
 // theme: auto -> light -> dark
@@ -1647,25 +1998,29 @@ function applyTheme() {
 $('#themeBtn').onclick = () => { theme = THEMES[(THEMES.indexOf(theme) + 1) % 3]; try { localStorage.setItem('traffic-theme', theme); } catch { /* ignore */ } applyTheme(); };
 applyTheme();
 
-function setHH() { document.documentElement.style.setProperty('--hh', $('#top').offsetHeight + 'px'); }
-window.addEventListener('resize', setHH); setHH();
-
-// live timers for requests in flight
+// Live timers for requests in flight: only the timer text changes; rows are redrawn when events arrive.
 setInterval(() => {
-  let any = false;
-  // Only the timer text changes; the rest of the row is redrawn when events arrive.
-  for (const ex of S.ex.values()) if (!ex.done && ex.dom) { const l = ex.dom.head.querySelector('.lat'); if (l) l.textContent = fmtDur(Date.now() - ex.t); any = true; }
-  if (any || $('#inflight').textContent) renderHeader();
+  const live = [...S.ex.values()].filter(ex => !ex.done && ex.dom);
+  if (live.length) keepListAnchor(() => {   // a longer timer text can wrap a row and change its height
+    for (const ex of live) {
+      const txt = fmtDur(Date.now() - ex.t);
+      const l = ex.dom.head.querySelector('.lat'); if (l) l.textContent = txt;
+      if (V.rendered === ex.id) { const d = $('#detailHead .lat'); if (d) d.textContent = txt; }
+    }
+  });
+  if (live.length || $('#inflight').textContent) renderHeader();
 }, 250);
 
 // =====================================================================
 // Connection
 // =====================================================================
 function connect() {
-  const es = new EventSource('/events');
+  if (S.es) S.es.close();  // never two streams at once (each would replay and double the events)
+  const es = S.es = new EventSource('/events');
   const conn = $('#conn');
-  es.onopen = () => { conn.className = 'live'; conn.textContent = 'live'; };
-  es.onerror = () => { conn.className = 'down'; conn.textContent = es.readyState === 2 ? 'disconnected' : 'reconnecting…'; if (es.readyState === 2) setTimeout(connect, 2000); };
+  es.onopen = () => { conn.className = 'live'; conn.textContent = 'live'; conn.title = ''; };
+  // A dropped dashboard connection means "reconnecting", never that a request was interrupted.
+  es.onerror = () => { conn.className = 'down'; conn.textContent = es.readyState === 2 ? 'disconnected' : 'reconnecting…'; conn.title = 'the dashboard lost its event stream; requests are unaffected'; if (es.readyState === 2) setTimeout(connect, 2000); };
   for (const name of ['ping', 'reset', 'replay_done', 'evicted', 'exchange_start', 'response_start', 'block_start', 'block_delta', 'block_stop', 'response_end', 'exchange_error'])
     es.addEventListener(name, e => { try { handle(name, JSON.parse(e.data)); } catch (err) { console.error('event', name, err); } });
 }
