@@ -81,6 +81,17 @@ SUB_QUEUE = 20000
 # Raw response text kept per exchange for the Raw section.
 MAX_RAW = 8 * 1024 * 1024
 STREAM_EVENTS = {"block_start", "block_delta", "block_stop"}
+# Identifies this proxy run. The page reloads itself when it changes (or when
+# dashboard.html is edited), so a tab never keeps running stale code or state.
+BOOT_ID = int(time.time() * 1000)
+
+
+def page_version() -> dict:
+    try:
+        mtime = os.path.getmtime(DASHBOARD_HTML)
+    except OSError:
+        mtime = None
+    return {"boot": BOOT_ID, "page_mtime": mtime}
 
 
 def now_ms() -> float:
@@ -245,6 +256,7 @@ class Recorder:
         sub = Subscriber()
         with self.lock:
             hello = frame("reset", {
+                **page_version(),
                 "evicted": self.evicted,
                 "upstream": UPSTREAM,
                 "prices": {k: {"input": v[0], "output": v[1], "cache_write": v[2], "cache_read": v[3]}
@@ -532,7 +544,7 @@ class Tap(BaseHTTPRequestHandler):
             upstream.sock.settimeout(600)
             upstream.request(self.command, target.path.rstrip("/") + self.path, body=body or None, headers=headers)
             reply = upstream.getresponse()
-        except OSError as e:
+        except (OSError, http.client.HTTPException) as e:
             REC.submit(rec.unreachable, f"cannot reach {UPSTREAM}: {e}", now_ms())
             if VERBOSE:
                 print(f"\n[{stamp()}] !!! cannot reach {UPSTREAM}: {e}", flush=True)
@@ -545,37 +557,44 @@ class Tap(BaseHTTPRequestHandler):
         REC.submit(rec.response_start, reply.status, reply.reason, resp_headers, now_ms())
         if VERBOSE:
             print(f"\n[{stamp()}] <<< {reply.status} {reply.reason}", flush=True)
-        self.send_response(reply.status, reply.reason)
-        for name, value in resp_headers:
-            if name.lower() not in SKIP and name.lower() != "content-encoding":
-                self.send_header(name, value)
-        self.send_header("Connection", "close")
-        self.end_headers()
         self.close_connection = True
-        if self.command == "HEAD":
-            REC.submit(rec.finish, now_ms())
-            return
         aborted, read_error = False, None
-        while True:
-            try:
-                chunk = reply.read1(4096)  # read1: pass on each chunk as it lands
-            except OSError as e:
-                read_error = f"upstream read failed: {e}"
-                break
-            if not chunk:
-                break
-            try:
-                self.wfile.write(chunk)
-                self.wfile.flush()
-            except OSError:
-                aborted = True  # the agent hung up (e.g. interrupted)
+        try:
+            self.send_response(reply.status, reply.reason)
+            for name, value in resp_headers:
+                if name.lower() not in SKIP and name.lower() != "content-encoding":
+                    self.send_header(name, value)
+            self.send_header("Connection", "close")
+            self.end_headers()
+        except OSError:
+            aborted = True  # the agent hung up before the reply started
+        try:
+            while self.command != "HEAD" and not aborted:
+                try:
+                    chunk = reply.read1(4096)  # read1: pass on each chunk as it lands
+                except (OSError, http.client.HTTPException) as e:
+                    # e.g. IncompleteRead when the upstream drops a chunked stream
+                    read_error = f"upstream read failed: {type(e).__name__}: {e}"
+                    break
+                if not chunk:
+                    break
+                try:
+                    self.wfile.write(chunk)
+                    self.wfile.flush()
+                except OSError:
+                    aborted = True  # the agent hung up (e.g. interrupted)
+                    REC.submit(rec.feed, chunk, now_ms())
+                    break
                 REC.submit(rec.feed, chunk, now_ms())
-                break
-            REC.submit(rec.feed, chunk, now_ms())
-            if VERBOSE:
-                sys.stdout.write(chunk.decode("utf-8", "replace"))
-                sys.stdout.flush()
-        REC.submit(rec.finish, now_ms(), aborted, read_error)
+                if VERBOSE:
+                    sys.stdout.write(chunk.decode("utf-8", "replace"))
+                    sys.stdout.flush()
+        except BaseException as e:
+            read_error = read_error or f"proxy relay failed: {type(e).__name__}: {e}"
+            raise
+        finally:
+            # Always close out the exchange, or its card stays "in flight" forever.
+            REC.submit(rec.finish, now_ms(), aborted, read_error)
         if VERBOSE:
             print(f"\n[{stamp()}] --- done", flush=True)
 
@@ -634,7 +653,7 @@ class Dash(BaseHTTPRequestHandler):
                 try:
                     fr = sub.q.get(timeout=15)
                 except queue.Empty:
-                    fr = ": ping\n\n"
+                    fr = frame("ping", page_version())  # keep-alive; also lets the page notice a restart or an edit
                 if fr is None:
                     break  # fell behind; the browser reconnects and re-syncs
                 out = [fr]

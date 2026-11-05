@@ -423,8 +423,17 @@ const costOf = ex => costParts(modelOf(ex), ex.resp?.usage)?.total ?? null;
 // =====================================================================
 // Event handling
 // =====================================================================
+function checkVersion(d) {
+  // The proxy restarted, or dashboard.html changed on disk: this page is stale, start over.
+  if (S.boot === undefined) { S.boot = d.boot; S.pageMtime = d.page_mtime; return true; }
+  if (d.boot === S.boot && d.page_mtime === S.pageMtime) return true;
+  toast(d.boot !== S.boot ? 'proxy restarted — reloading' : 'dashboard updated — reloading');
+  setTimeout(() => location.reload(), 300);
+  return false;
+}
 function handle(name, d) {
-  if (name === 'reset') return onReset(d);
+  if (name === 'ping') { checkVersion(d); return; }
+  if (name === 'reset') { if (!checkVersion(d)) return; return onReset(d); }
   if (name === 'replay_done') { S.replaying = false; scheduleFlush(); return; }
   if (name === 'evicted') return onEvicted(d);
   if (name === 'exchange_start') return onStart(d);
@@ -978,10 +987,20 @@ function addCard(ex) {
   ex.dom = { card, head: h('div', { class: 'row head' }), newRow: h('div', { class: 'row newrow' }), reply: h('div', { class: 'row replyrow' }),
     err: h('div', { class: 'errbanner' }), body: h('div', { class: 'body' }), secs: {} };
   card.append(ex.dom.head, ex.dom.newRow, ex.dom.reply, ex.dom.err, ex.dom.body);
-  card.addEventListener('click', e => {
-    // A clicked element that re-rendered itself is detached by now; it was never a click on the card rows.
-    if (!e.target.isConnected || ex.dom.body.contains(e.target)) return;
-    if (e.target.closest('a,button,input,.link')) return;
+  // Toggle on pointerdown + pointerup on the card itself, not on 'click'. The rows of a
+  // streaming card are redrawn many times a second, and a 'click' whose press and release
+  // land on different (replaced) elements is dropped by the browser.
+  let down = null;
+  card.addEventListener('pointerdown', e => {
+    down = null;
+    if (e.button !== 0) return;
+    if (ex.dom.body.contains(e.target) || e.target.closest('a,button,input,.link')) return;
+    down = { x: e.clientX, y: e.clientY };
+  });
+  card.addEventListener('pointerup', e => {
+    const d = down; down = null;
+    if (!d || e.button !== 0) return;
+    if (Math.hypot(e.clientX - d.x, e.clientY - d.y) > 5) return;  // a drag, e.g. selecting text
     if (window.getSelection()?.toString()) return;
     setFocus(ex); toggleCard(ex);
   });
@@ -1030,7 +1049,7 @@ function headRow(ex) {
     out.push(h('span', { class: 'ttag', style: `--tc:${NEUTRAL}` }, ex.kind === 'generic' ? 'unrecognised API' : 'other'), h('span', { class: 'mono' }, `${ex.method} ${ex.path}`));
   }
   if (status) out.push(span('chip ' + (status >= 400 ? 'badc' : 'okc'), String(status), ex.resp.reason || ''));
-  out.push(span('num', fmtDur(lat), `${exact(Math.round(lat))} ms total`));
+  out.push(span('num lat', fmtDur(lat), `${exact(Math.round(lat))} ms total`));
   const u = ex.resp?.usage;
   if (ex.kind === 'msg' && u) {
     const tin = tokIn(u);
@@ -1634,7 +1653,8 @@ window.addEventListener('resize', setHH); setHH();
 // live timers for requests in flight
 setInterval(() => {
   let any = false;
-  for (const ex of S.ex.values()) if (!ex.done && ex.dom) { ex.dom.head.replaceChildren(...headRow(ex)); any = true; }
+  // Only the timer text changes; the rest of the row is redrawn when events arrive.
+  for (const ex of S.ex.values()) if (!ex.done && ex.dom) { const l = ex.dom.head.querySelector('.lat'); if (l) l.textContent = fmtDur(Date.now() - ex.t); any = true; }
   if (any || $('#inflight').textContent) renderHeader();
 }, 250);
 
@@ -1646,7 +1666,7 @@ function connect() {
   const conn = $('#conn');
   es.onopen = () => { conn.className = 'live'; conn.textContent = 'live'; };
   es.onerror = () => { conn.className = 'down'; conn.textContent = es.readyState === 2 ? 'disconnected' : 'reconnecting…'; if (es.readyState === 2) setTimeout(connect, 2000); };
-  for (const name of ['reset', 'replay_done', 'evicted', 'exchange_start', 'response_start', 'block_start', 'block_delta', 'block_stop', 'response_end', 'exchange_error'])
+  for (const name of ['ping', 'reset', 'replay_done', 'evicted', 'exchange_start', 'response_start', 'block_start', 'block_delta', 'block_stop', 'response_end', 'exchange_error'])
     es.addEventListener(name, e => { try { handle(name, JSON.parse(e.data)); } catch (err) { console.error('event', name, err); } });
 }
 connect();
