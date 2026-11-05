@@ -1,0 +1,1654 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent Traffic</title>
+<style>
+:root {
+  color-scheme: light;
+  --bg: #f4f4f1; --panel: #fcfcfb; --panel2: #efeee9; --border: #dcdbd5; --border2: #c9c8c0;
+  --text: #0b0b0b; --muted: #52514e; --faint: #85847e;
+  --link: #1c64bd;
+  --acc-prompt: #2a78d6; --acc-model: #1baf7a; --acc-thinking: #6250d6; --acc-reminder: #a3a29b;
+  --acc-call: #eb6834; --acc-result: #6b6a64; --acc-media: #e87ba4;
+  --bad: #c8302f; --bad-bg: #fcebea; --ok: #1f7a3a; --warn: #a86400; --warn-bg: #fff4dc;
+  --sec-system: #6250d6; --sec-tools: #eda100; --sec-history: #a3a29b; --sec-new: #2a78d6;
+  --sec-reply: #1baf7a; --sec-changes: #eb6834; --sec-stats: #008300; --sec-raw: #6b6a64;
+  --series-1: #2a78d6;
+  --diff-add: #e3f6e8; --diff-del: #fbe6e6;
+  --fresh: #fff3c4;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, sans-serif;
+  --hh: 52px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #141413; --panel: #1c1c1b; --panel2: #252524; --border: #34342f; --border2: #45453f;
+    --text: #f0efec; --muted: #c3c2b7; --faint: #8f8e86; --link: #7fb3f5;
+    --acc-prompt: #3987e5; --acc-model: #199e70; --acc-thinking: #9085e9; --acc-reminder: #6d6c66;
+    --acc-call: #d95926; --acc-result: #9a998f; --acc-media: #d55181;
+    --bad: #ee6b6a; --bad-bg: #3a1d1c; --ok: #5cc27a; --warn: #e0a33a; --warn-bg: #3a2d12;
+    --sec-system: #9085e9; --sec-tools: #c98500; --sec-history: #6d6c66; --sec-new: #3987e5;
+    --sec-reply: #199e70; --sec-changes: #d95926; --sec-stats: #2f9a2f; --sec-raw: #9a998f;
+    --series-1: #3987e5; --diff-add: #1c3324; --diff-del: #3d2020; --fresh: #3d3410;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #141413; --panel: #1c1c1b; --panel2: #252524; --border: #34342f; --border2: #45453f;
+  --text: #f0efec; --muted: #c3c2b7; --faint: #8f8e86; --link: #7fb3f5;
+  --acc-prompt: #3987e5; --acc-model: #199e70; --acc-thinking: #9085e9; --acc-reminder: #6d6c66;
+  --acc-call: #d95926; --acc-result: #9a998f; --acc-media: #d55181;
+  --bad: #ee6b6a; --bad-bg: #3a1d1c; --ok: #5cc27a; --warn: #e0a33a; --warn-bg: #3a2d12;
+  --sec-system: #9085e9; --sec-tools: #c98500; --sec-history: #6d6c66; --sec-new: #3987e5;
+  --sec-reply: #199e70; --sec-changes: #d95926; --sec-stats: #2f9a2f; --sec-raw: #9a998f;
+  --series-1: #3987e5; --diff-add: #1c3324; --diff-del: #3d2020; --fresh: #3d3410;
+}
+* { box-sizing: border-box; }
+html { overflow-anchor: none; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 13px/1.45 var(--sans); }
+a, .link { color: var(--link); cursor: pointer; text-decoration: none; }
+a:hover, .link:hover { text-decoration: underline; }
+button { font: inherit; color: inherit; background: var(--panel2); border: 1px solid var(--border); border-radius: 5px; padding: 2px 8px; cursor: pointer; }
+button:hover { border-color: var(--border2); }
+pre { margin: 0; white-space: pre-wrap; word-break: break-word; }
+.mono, code, pre.code { font-family: var(--mono); font-size: 12px; }
+.muted { color: var(--muted); }
+.faint { color: var(--faint); }
+.bad { color: var(--bad); }
+.ok { color: var(--ok); }
+.warn { color: var(--warn); }
+
+/* ---------- header ---------- */
+#top { position: sticky; top: 0; z-index: 20; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px;
+  padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--border); }
+#conn { font-weight: 600; }
+#conn.live::before { content: "● "; color: var(--ok); }
+#conn.down::before { content: "● "; color: var(--bad); }
+#inflight { color: var(--muted); }
+#totals { color: var(--muted); }
+#totals b { color: var(--text); font-weight: 600; }
+.spacer { flex: 1; }
+#errBtn.has { background: var(--bad-bg); border-color: var(--bad); color: var(--bad); font-weight: 600; }
+#errBtn.active { outline: 2px solid var(--bad); }
+#statsPanel { position: sticky; top: var(--hh); z-index: 15; max-height: 60vh; overflow: auto; background: var(--panel);
+  border-bottom: 1px solid var(--border); padding: 12px 16px; display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
+#statsPanel[hidden] { display: none; }
+#statsPanel h3 { margin: 0 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+table.t { border-collapse: collapse; width: 100%; font-size: 12px; }
+table.t th, table.t td { text-align: left; padding: 2px 8px 2px 0; border-bottom: 1px solid var(--border); vertical-align: top; }
+table.t th { color: var(--muted); font-weight: 500; }
+table.t td.n, table.t th.n { text-align: right; font-variant-numeric: tabular-nums; }
+table.t tr.click { cursor: pointer; }
+table.t tr.click:hover td { background: var(--panel2); }
+table.t tr.sel td { background: var(--panel2); font-weight: 600; }
+
+/* ---------- layout ---------- */
+#layout { display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: 16px; padding: 12px 16px 40px; }
+#side { position: sticky; top: calc(var(--hh) + 12px); align-self: start; max-height: calc(100vh - var(--hh) - 24px); overflow: auto;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; font-size: 12px; }
+#side h4 { margin: 10px 0 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+#side h4:first-child { margin-top: 0; }
+#side label { display: flex; align-items: center; gap: 6px; padding: 1px 0; cursor: pointer; }
+#side .toolrow { display: flex; justify-content: space-between; gap: 6px; padding: 1px 4px; border-radius: 4px; cursor: pointer; }
+#side .toolrow:hover { background: var(--panel2); }
+#side .toolrow.sel { background: var(--panel2); outline: 1px solid var(--border2); font-weight: 600; }
+#side input[type=search] { width: 100%; font: inherit; color: inherit; background: var(--bg); border: 1px solid var(--border); border-radius: 5px; padding: 3px 6px; }
+#side .keys { color: var(--faint); line-height: 1.7; }
+kbd { font-family: var(--mono); font-size: 11px; border: 1px solid var(--border2); border-bottom-width: 2px; border-radius: 3px; padding: 0 3px; }
+main { min-width: 0; }
+#pill { position: fixed; top: calc(var(--hh) + 8px); left: 50%; transform: translateX(-50%); z-index: 10; display: block; background: var(--acc-prompt); color: #fff;
+  border: none; border-radius: 999px; padding: 4px 14px; font-weight: 600; box-shadow: 0 2px 8px rgba(0,0,0,.2); }
+#pill[hidden] { display: none; }
+#empty { color: var(--muted); padding: 40px; text-align: center; }
+#evictNote { color: var(--faint); text-align: center; padding: 12px; }
+@media (max-width: 820px) {
+  #layout { grid-template-columns: minmax(0, 1fr); padding: 12px 16px 40px; }
+  #side { position: static; max-height: none; }
+}
+
+/* ---------- cards ---------- */
+.card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 8px; scroll-margin-top: calc(var(--hh) + 12px); }
+.card.fresh { animation: fresh 1.6s ease-out; }
+@keyframes fresh { from { background: var(--fresh); } to { background: var(--panel); } }
+.card.focused { outline: 2px solid var(--acc-prompt); outline-offset: 1px; }
+.card.flash { animation: fresh 1.2s ease-out; }
+.card.haserr { border-left: 4px solid var(--bad); }
+.card.expanded { border-color: var(--border2); }
+.row { padding: 3px 12px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; cursor: pointer; min-width: 0; }
+.row.head { padding-top: 7px; }
+.row.replyrow { padding-bottom: 7px; }
+.rowlab { font-size: 10px; font-weight: 700; letter-spacing: .06em; color: var(--faint); width: 44px; flex: none; }
+.kind-nonmsg .row.head, .kind-generic .row.head { padding-bottom: 7px; }
+.kind-nonmsg .newrow, .kind-nonmsg .replyrow, .kind-generic .newrow, .kind-generic .replyrow { display: none; }
+.kind-nonmsg { opacity: .85; }
+.id { font-weight: 700; font-variant-numeric: tabular-nums; }
+.chip { display: inline-block; padding: 0 6px; border-radius: 4px; background: var(--panel2); border: 1px solid var(--border); font-size: 11.5px; white-space: nowrap; }
+.chip.okc { color: var(--ok); }
+.chip.badc { color: var(--bad); border-color: var(--bad); background: var(--bad-bg); font-weight: 600; }
+.chip.warnc { color: var(--warn); border-color: var(--warn); background: var(--warn-bg); }
+.chip.state-done { color: var(--muted); }
+.chip.state-live { color: var(--acc-prompt); border-color: var(--acc-prompt); }
+.ttag { display: inline-block; padding: 0 6px; border-radius: 4px; font-size: 11.5px; font-weight: 600; border: 1px solid var(--tc); color: var(--text);
+  background: color-mix(in srgb, var(--tc) 14%, transparent); white-space: nowrap; }
+.num { font-variant-numeric: tabular-nums; color: var(--muted); white-space: nowrap; }
+.sumtxt { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.sumrow { display: flex; flex-wrap: wrap; gap: 4px 10px; min-width: 0; flex: 1; }
+.tchip { display: inline-flex; gap: 4px; align-items: baseline; padding: 0 6px; border-radius: 4px; border: 1px solid var(--acc-call);
+  font-size: 12px; max-width: 420px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.tchip .arg { font-family: var(--mono); font-size: 11.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
+.tchip.err { border-color: var(--bad); background: var(--bad-bg); }
+.cursor { display: inline-block; width: .55em; height: 1.05em; vertical-align: text-bottom; background: var(--acc-model); animation: blink 1s steps(2) infinite; margin-left: 1px; }
+@keyframes blink { 50% { opacity: 0; } }
+.errbanner:empty { display: none; }
+.errbanner { margin: 4px 12px 8px; padding: 5px 10px; background: var(--bad-bg); color: var(--bad); border: 1px solid var(--bad); border-radius: 5px; font-weight: 600; }
+.errbanner div + div { margin-top: 2px; }
+.body { border-top: 1px solid var(--border); padding: 8px 12px 12px; cursor: auto; }
+.body:empty { display: none; }
+.toolbar { display: flex; gap: 6px; justify-content: flex-end; margin-bottom: 6px; }
+
+/* ---------- sections ---------- */
+.sec { border: 1px solid var(--border); border-left: 4px solid var(--acc); border-radius: 6px; margin: 8px 0; background: var(--panel); }
+.sechead { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; padding: 5px 10px; cursor: pointer; background: color-mix(in srgb, var(--acc) 9%, var(--panel)); border-radius: 0 5px 5px 0; }
+.sec.open > .sechead { border-bottom: 1px solid var(--border); border-radius: 0 5px 0 0; }
+.sechead .t { font-weight: 650; }
+.sechead .hint { color: var(--muted); font-size: 12px; }
+.secbody { padding: 8px 10px 10px; min-width: 0; }
+.caret { display: inline-block; width: 1em; color: var(--faint); flex: none; }
+.acc-system { --acc: var(--sec-system); } .acc-tools { --acc: var(--sec-tools); } .acc-history { --acc: var(--sec-history); }
+.acc-new { --acc: var(--sec-new); } .acc-reply { --acc: var(--sec-reply); } .acc-changes { --acc: var(--sec-changes); }
+.acc-stats { --acc: var(--sec-stats); } .acc-raw { --acc: var(--sec-raw); }
+.tag { display: inline-block; font-size: 10.5px; padding: 0 5px; border-radius: 3px; border: 1px solid var(--border2); color: var(--muted); font-family: var(--mono); }
+.fold { margin: 4px 0; }
+.foldhead { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: baseline; cursor: pointer; padding: 2px 0; min-width: 0; }
+.foldhead:hover { background: var(--panel2); }
+.foldbody { padding: 4px 0 4px 16px; min-width: 0; }
+.sysblock + .sysblock { margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--border); }
+.lt { min-width: 0; }
+.lt pre.prose { font-family: var(--sans); font-size: 13px; }
+.more { margin-top: 4px; font-size: 11.5px; padding: 0 8px; color: var(--link); background: transparent; }
+.copy { font-size: 11px; padding: 0 6px; }
+
+/* ---------- message vocabulary ---------- */
+.msgs { display: flex; flex-direction: column; gap: 6px; }
+.msg { border-left: 3px solid var(--acc); padding: 3px 10px 4px; min-width: 0; }
+.mlabel { font-size: 11px; font-weight: 700; color: var(--muted); letter-spacing: .03em; margin-bottom: 2px; display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.k-prompt { --acc: var(--acc-prompt); background: color-mix(in srgb, var(--acc-prompt) 6%, transparent); }
+.k-model { --acc: var(--acc-model); }
+.k-reminder { --acc: var(--acc-reminder); border-left-style: dotted; margin-left: 18px; color: var(--muted); font-size: 12px; }
+.k-thinking { --acc: var(--acc-thinking); border-left-style: dashed; margin-left: 18px; color: var(--muted); }
+.k-result { --acc: var(--acc-result); margin-left: 18px; }
+.k-result.err { --acc: var(--bad); }
+.k-media { --acc: var(--acc-media); margin-left: 18px; font-size: 12px; }
+.k-echo { --acc: var(--border2); color: var(--muted); font-size: 12px; }
+.k-other { --acc: var(--border2); margin-left: 18px; }
+body.hide-thinking .k-thinking, body.hide-thinking .sum-thinking { display: none; }
+body.hide-reminders .k-reminder, body.hide-reminders .sum-reminder { display: none; }
+.md p { margin: 0 0 6px; } .md p:last-child { margin-bottom: 0; }
+.md ul, .md ol { margin: 2px 0 6px; padding-left: 22px; }
+.md h3, .md h4, .md h5 { margin: 8px 0 4px; font-size: 13.5px; }
+.md code { background: var(--panel2); padding: 0 3px; border-radius: 3px; }
+.md pre.code { background: var(--panel2); padding: 6px 8px; border-radius: 4px; margin: 4px 0 6px; overflow-x: auto; }
+
+/* ---------- tool call beside result ---------- */
+.pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); border: 1px solid var(--border); border-radius: 6px; margin: 2px 0 2px 8px; }
+.pair.err { border-color: var(--bad); box-shadow: 0 0 0 1px var(--bad); }
+.pair.hl { outline: 2px solid var(--acc-call); outline-offset: 1px; }
+.pcall, .pres { padding: 5px 10px 7px; min-width: 0; }
+.pcall { border-left: 3px solid var(--acc-call); border-radius: 5px 0 0 5px; }
+.pres { border-left: 1px solid var(--border); background: color-mix(in srgb, var(--acc-result) 5%, transparent); }
+.pair.err .pres { background: var(--bad-bg); }
+.phead { font-size: 12px; font-weight: 650; margin-bottom: 3px; display: flex; gap: 6px; flex-wrap: wrap; align-items: baseline; }
+.phead .sub { font-weight: 400; color: var(--muted); }
+.kv { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 1px 8px; font-size: 12px; }
+.kv .k { color: var(--muted); font-family: var(--mono); font-size: 11.5px; }
+.waiting { color: var(--muted); font-style: italic; }
+@media (max-width: 900px) { .pair { grid-template-columns: minmax(0, 1fr); } .pres { border-left: none; border-top: 1px solid var(--border); } }
+
+/* ---------- json ---------- */
+.json { font-family: var(--mono); font-size: 12px; position: relative; background: var(--bg); border: 1px solid var(--border); border-radius: 5px; padding: 4px 8px; overflow-x: auto; }
+.json > .copy { position: absolute; right: 4px; top: 4px; }
+.jkids { padding-left: 16px; border-left: 1px dotted var(--border2); margin-left: 4px; }
+.jrow { white-space: pre-wrap; word-break: break-word; }
+.jtog { cursor: pointer; }
+.jtog:hover { background: var(--panel2); }
+.jk { color: var(--sec-system); }
+.js { color: var(--ok); }
+.jn { color: var(--acc-call); }
+.jb { color: var(--acc-prompt); }
+.jcount { color: var(--faint); font-style: italic; }
+
+/* ---------- diff ---------- */
+.diff { font-family: var(--mono); font-size: 12px; border: 1px solid var(--border); border-radius: 5px; overflow-x: auto; }
+.diff div { white-space: pre-wrap; word-break: break-word; padding: 0 6px; }
+.diff .a { background: var(--diff-add); } .diff .a::before { content: "+ "; color: var(--ok); }
+.diff .d { background: var(--diff-del); } .diff .d::before { content: "- "; color: var(--bad); }
+.diff .c::before { content: "  "; }
+.diff .gap { color: var(--faint); font-style: italic; background: var(--panel2); }
+.chg { margin: 4px 0 10px; }
+.chg > .lbl { font-weight: 650; margin-bottom: 3px; }
+.warnbox { background: var(--warn-bg); border: 1px solid var(--warn); color: var(--warn); border-radius: 5px; padding: 4px 8px; font-weight: 600; margin: 4px 0; }
+
+/* ---------- charts ---------- */
+.chart { position: relative; }
+.chart svg { display: block; width: 100%; overflow: visible; }
+.chart .bar { fill: var(--series-1); }
+.chart .hit { fill: transparent; cursor: pointer; }
+.chart .hit:hover + .bar, .chart .bar.hov { opacity: .75; }
+.chart .axis { stroke: var(--border2); stroke-width: 1; }
+.chart .axl { fill: var(--muted); font-size: 10.5px; font-family: var(--sans); }
+#tip { position: fixed; z-index: 50; pointer-events: none; background: var(--panel); border: 1px solid var(--border2); border-radius: 5px; padding: 4px 8px; font-size: 12px; box-shadow: 0 2px 8px rgba(0,0,0,.18); }
+#tip[hidden] { display: none; }
+#toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); z-index: 60; background: var(--text); color: var(--bg); padding: 6px 14px; border-radius: 6px; }
+#toast[hidden] { display: none; }
+</style>
+</head>
+<body>
+<header id="top">
+  <span id="conn" class="down">connecting…</span>
+  <span id="inflight"></span>
+  <span class="spacer"></span>
+  <span id="totals"></span>
+  <button id="errBtn" title="Show only requests with errors (e / Shift+E to jump)">Errors 0</button>
+  <button id="statsBtn">Stats ▾</button>
+  <button id="expandAll" title="Expand every visible card">Expand all</button>
+  <button id="collapseAll" title="Collapse every card">Collapse all</button>
+  <button id="themeBtn" title="Theme: auto / light / dark">◐ auto</button>
+</header>
+<div id="statsPanel" hidden></div>
+<div id="layout">
+  <aside id="side">
+    <h4>Search</h4>
+    <input id="search" type="search" placeholder="text in new messages / reply  ( / )">
+    <div id="sideDyn"></div>
+    <h4>Kinds</h4>
+    <label><input type="checkbox" id="kThinking" checked> 💭 thinking</label>
+    <label><input type="checkbox" id="kReminders" checked> 🔔 reminders</label>
+    <h4>Other</h4>
+    <label><input type="checkbox" id="fErrors"> ⚠ errors only</label>
+    <label><input type="checkbox" id="fNonMsg"> non-message requests <span id="nonMsgCount" class="faint"></span></label>
+    <h4>Keys</h4>
+    <div class="keys"><kbd>j</kbd>/<kbd>k</kbd> next/prev · <kbd>o</kbd> open<br><kbd>Home</kbd> newest · <kbd>/</kbd> search<br><kbd>e</kbd>/<kbd>E</kbd> next/prev error</div>
+  </aside>
+  <main>
+    <button id="pill" hidden>↑ 0 new requests</button>
+    <div id="feed"></div>
+    <div id="empty">Waiting for traffic… start the agent with <code>ANTHROPIC_BASE_URL=http://localhost:8041 claude</code></div>
+    <div id="evictNote"></div>
+  </main>
+</div>
+<div id="tip" hidden></div>
+<div id="toast" hidden></div>
+<script>
+'use strict';
+// =====================================================================
+// Helpers
+// =====================================================================
+const $ = (s, r = document) => r.querySelector(s);
+function h(tag, attrs, ...kids) {
+  const el = document.createElement(tag);
+  if (attrs) for (const [k, v] of Object.entries(attrs)) {
+    if (v == null || v === false) continue;
+    if (k === 'class') el.className = v;
+    else if (k === 'text') el.textContent = v;
+    else if (k === 'html') el.innerHTML = v;
+    else if (k.startsWith('on')) el[k] = v;
+    else if (k === 'style') el.style.cssText = v;
+    else el.setAttribute(k, v === true ? '' : v);
+  }
+  for (const kid of kids.flat(Infinity)) {
+    if (kid == null || kid === false || kid === '') continue;
+    el.append(kid instanceof Node ? kid : document.createTextNode(String(kid)));
+  }
+  return el;
+}
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const fmtTok = n => n == null ? '—' : n < 1000 ? String(n) : n < 1e6 ? (n / 1000).toFixed(1) + 'k' : (n / 1e6).toFixed(2) + 'M';
+const fmtBytes = n => n == null ? '—' : n < 1024 ? n + ' B' : n < 1048576 ? (n / 1024).toFixed(1) + ' KB' : (n / 1048576).toFixed(1) + ' MB';
+const fmtDur = ms => ms == null || isNaN(ms) ? '—' : ms < 1000 ? Math.round(ms) + 'ms' : ms < 60000 ? (ms / 1000).toFixed(1) + 's' : Math.floor(ms / 60000) + 'm' + String(Math.round(ms % 60000 / 1000)).padStart(2, '0') + 's';
+const fmtCost = c => c == null ? '—' : c < 0.01 && c > 0 ? '$' + c.toFixed(4) : '$' + c.toFixed(2);
+const fmtTime = t => new Date(t).toLocaleTimeString([], { hour12: false });
+const fmtChars = n => n < 1000 ? n + ' chars' : (n / 1000).toFixed(1) + 'k chars';
+const exact = n => n == null ? '' : Number(n).toLocaleString();
+const firstLine = s => { s = String(s ?? '').trim(); const i = s.indexOf('\n'); return i < 0 ? s : s.slice(0, i); };
+const trunc = (s, n) => s.length > n ? s.slice(0, n - 1) + '…' : s;
+const utf8len = s => { try { return new TextEncoder().encode(s).length; } catch { return s.length; } };
+const shortModel = m => m ? m.replace(/^claude-/, '').replace(/-\d{8}$/, '') : '?';
+const span = (cls, text, title) => h('span', { class: cls, title }, text);
+
+function hash(str) {
+  let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
+  for (let i = 0; i < str.length; i++) {
+    const ch = str.charCodeAt(i);
+    h1 = Math.imul(h1 ^ ch, 2654435761); h2 = Math.imul(h2 ^ ch, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507); h1 ^= Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507); h2 ^= Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return (h2 >>> 0).toString(36) + (h1 >>> 0).toString(36);
+}
+// cache_control markers move between requests; they are not part of the content.
+function stripCC(v) {
+  if (Array.isArray(v)) return v.map(stripCC);
+  if (v && typeof v === 'object') { const o = {}; for (const k of Object.keys(v)) if (k !== 'cache_control') o[k] = stripCC(v[k]); return o; }
+  return v;
+}
+const sig = v => hash(JSON.stringify(stripCC(v) ?? null));
+const blocksOf = m => typeof m?.content === 'string' ? [{ type: 'text', text: m.content }] : Array.isArray(m?.content) ? m.content : [];
+
+const REM = /<system-reminder>([\s\S]*?)<\/system-reminder>/g;
+function splitReminders(text) {
+  const parts = []; let last = 0;
+  for (const m of String(text).matchAll(REM)) {
+    if (m.index > last) parts.push({ k: 'prompt', text: text.slice(last, m.index) });
+    parts.push({ k: 'reminder', text: m[1].trim() });
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) parts.push({ k: 'prompt', text: text.slice(last) });
+  return parts.filter(p => p.text.trim()).map(p => ({ k: p.k, text: p.k === 'prompt' ? p.text.trim() : p.text }));
+}
+const stripReminders = t => String(t).replace(REM, '').trim();
+
+function resultText(block) {
+  const c = block?.content;
+  if (typeof c === 'string') return c;
+  if (Array.isArray(c)) return c.map(b => b.type === 'text' ? b.text : b.type === 'image' ? `[image ${b.source?.media_type || ''}]` : `[${b.type}]`).join('\n');
+  return c == null ? '' : JSON.stringify(c);
+}
+
+function copyText(text) {
+  const done = () => toast('copied');
+  if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(text).then(done, () => fallback());
+  else fallback();
+  function fallback() {
+    const ta = h('textarea', { style: 'position:fixed;left:-9999px' }); ta.value = text; document.body.append(ta); ta.select();
+    try { document.execCommand('copy'); done(); } catch { toast('copy failed'); } ta.remove();
+  }
+}
+const copyBtn = (getText, label = 'copy') => h('button', { class: 'copy', onclick: e => { e.stopPropagation(); copyText(getText()); } }, label);
+let toastTimer = 0;
+function toast(msg) { const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => t.hidden = true, 1400); }
+
+// =====================================================================
+// State
+// =====================================================================
+const S = {
+  ex: new Map(), threads: new Map(), seq: { agent: 0, side: 0, thread: 0 },
+  tools: new Map(), agentCalls: [], prices: {}, pricesAsOf: '', evicted: 0,
+  replaying: false, pending: 0, focus: null, dirty: new Map(), sideDirty: true, colorSlot: 1,
+};
+const UI = new Map();   // UI open/closed state, survives re-renders and re-syncs
+const isOpen = (k, d) => UI.has(k) ? UI.get(k) : d;
+const F = { groups: new Map(), tools: new Set(), errorsOnly: false, showNonMsg: false, search: '', force: new Set() };
+const PALETTE = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#6250d6', '#e34948'];
+const NEUTRAL = '#8f8e86';
+const ARG = { Bash: 'command', Read: 'file_path', Edit: 'file_path', Write: 'file_path', MultiEdit: 'file_path', NotebookEdit: 'notebook_path',
+  Grep: 'pattern', Glob: 'pattern', Agent: 'description', Task: 'description', WebFetch: 'url', WebSearch: 'query' };
+
+function mainArg(name, input, partial) {
+  if (input && typeof input === 'object') {
+    let v = ARG[name] ? input[ARG[name]] : undefined;
+    if (v == null) v = Object.values(input).find(x => typeof x === 'string' && x.length <= 200);
+    return v == null ? '' : firstLine(String(v));
+  }
+  if (partial && ARG[name]) {
+    const m = partial.match(new RegExp('"' + ARG[name] + '"\\s*:\\s*"((?:[^"\\\\]|\\\\.)*)'));
+    if (m) { try { return firstLine(JSON.parse('"' + m[1].replace(/\\$/, '') + '"')); } catch { return firstLine(m[1]); } }
+  }
+  return '';
+}
+
+function priceFor(model) {
+  if (!model) return null;
+  let best = null;
+  for (const k of Object.keys(S.prices)) if (model.startsWith(k) && (!best || k.length > best.length)) best = k;
+  return best ? S.prices[best] : null;
+}
+function costParts(model, u) {
+  const p = priceFor(model);
+  if (!p || !u) return null;
+  const cc = u.cache_creation || {};
+  const e5 = cc.ephemeral_5m_input_tokens, e1 = cc.ephemeral_1h_input_tokens;
+  const write = (e5 != null || e1 != null) ? (e5 || 0) * p.cache_write + (e1 || 0) * p.input * 2 : (u.cache_creation_input_tokens || 0) * p.cache_write;
+  const parts = { input: (u.input_tokens || 0) * p.input / 1e6, output: (u.output_tokens || 0) * p.output / 1e6,
+    cache_read: (u.cache_read_input_tokens || 0) * p.cache_read / 1e6, cache_write: write / 1e6 };
+  parts.total = parts.input + parts.output + parts.cache_read + parts.cache_write;
+  return parts;
+}
+const tokIn = u => u ? (u.input_tokens || 0) + (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0) : 0;
+const modelOf = ex => ex.resp?.model || ex.request?.model;
+const costOf = ex => costParts(modelOf(ex), ex.resp?.usage)?.total ?? null;
+
+// =====================================================================
+// Event handling
+// =====================================================================
+function handle(name, d) {
+  if (name === 'reset') return onReset(d);
+  if (name === 'replay_done') { S.replaying = false; scheduleFlush(); return; }
+  if (name === 'evicted') return onEvicted(d);
+  if (name === 'exchange_start') return onStart(d);
+  const ex = S.ex.get(d.id);
+  if (!ex) return;  // evicted while in flight
+  if (name === 'response_start') {
+    ex.resp = Object.assign(ex.resp || {}, Object.fromEntries(Object.entries({
+      status: d.status, reason: d.reason, headers: d.headers, model: d.model, message_id: d.message_id, usage: d.usage,
+    }).filter(([, v]) => v != null)));
+    if (!ex.resp.tStart) ex.resp.tStart = d.t;
+    markDirty(ex, 'head', 'reply', 'stats');
+  } else if (name === 'block_start') {
+    const b = { type: d.type, name: d.name, id: d.tool_use_id, text: d.text || '', thinking: d.thinking || '', data: d.data, partial: '', done: false };
+    ex.blocks[d.index] = b;
+    if (b.type === 'tool_use' && b.id) registerCall(ex, b);
+    markDirty(ex, 'head', 'reply');
+  } else if (name === 'block_delta') {
+    const b = ex.blocks[d.index] || (ex.blocks[d.index] = { type: 'text', text: '', thinking: '', partial: '', done: false });
+    if (d.text != null) b.text += d.text;
+    if (d.thinking != null) b.thinking += d.thinking;
+    if (d.partial_json != null) b.partial += d.partial_json;
+    markDirty(ex, 'head', 'reply');
+  } else if (name === 'block_stop') {
+    const b = ex.blocks[d.index];
+    if (b) { b.done = true; if (d.input !== undefined) b.input = d.input; }
+    markDirty(ex, 'head', 'reply');
+  } else if (name === 'response_end') {
+    Object.assign(ex.resp || (ex.resp = {}), {
+      status: d.status, model: d.model || ex.resp.model, message_id: d.message_id || ex.resp.message_id,
+      stop_reason: d.stop_reason, usage: d.usage && Object.keys(d.usage).length ? d.usage : ex.resp.usage,
+      raw: d.raw, rawTruncated: d.raw_truncated, respBytes: d.response_bytes, tFirstByte: d.t_first_byte,
+      tFirstToken: d.t_first_token, tEnd: d.t, aborted: d.aborted, json: d.json,
+    });
+    if (Array.isArray(d.content) && d.content.length) ex.blocks = d.content.map(b => ({ ...b, done: true }));
+    else ex.blocks.forEach(b => { if (b) b.done = true; });
+    ex.done = true; ex.search = null;
+    ex.calls = [];
+    for (const b of ex.blocks) if (b && (b.type === 'tool_use') && b.id) registerCall(ex, b, true);
+    markDirty(ex, 'all');
+    S.sideDirty = true;
+  } else if (name === 'exchange_error') {
+    ex.errors.push(d);
+    markDirty(ex, 'all');
+    S.sideDirty = true;
+  }
+}
+
+function onReset(d) {
+  S.ex.clear(); S.threads.clear(); S.tools.clear(); S.agentCalls = []; S.seq = { agent: 0, side: 0, thread: 0 };
+  S.colorSlot = 1; S.dirty.clear(); S.pending = 0; S.focus = null;
+  S.prices = d.prices || {}; S.pricesAsOf = d.prices_as_of || ''; S.evicted = d.evicted || 0;
+  S.replaying = true; S.sideDirty = true;
+  $('#feed').replaceChildren();
+  scheduleFlush();
+}
+
+function onEvicted(d) {
+  S.evicted = d.total;
+  for (const id of d.ids) {
+    const ex = S.ex.get(id); if (!ex) continue;
+    ex.dom?.card.remove(); S.ex.delete(id);
+    const th = S.threads.get(ex.thread); if (th) th.ids = th.ids.filter(x => x !== id);
+  }
+  S.sideDirty = true; scheduleFlush();
+}
+
+function classify(ex) {
+  const p = ex.path.split('?')[0];
+  if (ex.method !== 'POST' || !/\/v1\/messages\/?$/.test(p)) return 'nonmsg';
+  // Adapter: only the Anthropic Messages API is recognised in v1 (D8).
+  const r = ex.request;
+  if (!r || typeof r !== 'object' || !Array.isArray(r.messages)) return 'generic';
+  return 'msg';
+}
+
+function onStart(d) {
+  const ex = { id: d.id, t: d.t, method: d.method, path: d.path, headers: d.headers || [], request: d.request, reqBytes: d.request_bytes || 0,
+    resp: null, blocks: [], errors: [], calls: [], results: [], done: false, fresh: !S.replaying };
+  ex.kind = classify(ex);
+  S.ex.set(ex.id, ex);
+  if (ex.kind === 'msg') analyze(ex);
+  addCard(ex);
+  S.sideDirty = true;
+}
+
+function isPrefix(a, b) { if (a.length > b.length) return false; for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false; return true; }
+function commonPrefix(a, b) { let i = 0; while (i < a.length && i < b.length && a[i] === b[i]) i++; return i; }
+function firstPromptText(msgs) {
+  const m = msgs[0]; if (!m || m.role !== 'user') return '';
+  return blocksOf(m).filter(b => b.type === 'text').map(b => stripReminders(b.text)).join('\n').trim();
+}
+
+function newThread(kind, ex) {
+  let key, name;
+  if (kind === 'main') key = name = 'main';
+  else if (kind === 'side') { S.seq.side++; key = 'side:' + S.seq.side; name = 'side'; }
+  else { S.seq[kind]++; key = name = kind + ':' + S.seq[kind]; }
+  let color = NEUTRAL;
+  if (kind === 'main') color = PALETTE[0];
+  else if (kind !== 'side' && S.colorSlot < PALETTE.length) color = PALETTE[S.colorSlot++];
+  const th = { key, name, kind, group: kind === 'side' ? 'side' : key, ids: [], hasTools: ex.hasTools, firstHash: ex.mh[0], sysSig: ex.sysSig, color, startedBy: null };
+  S.threads.set(key, th);
+  if (!F.groups.has(th.group)) F.groups.set(th.group, th.group !== 'side');
+  return th;
+}
+
+// Work out which thread a message request belongs to and what is new in it.
+function analyze(ex) {
+  const r = ex.request, msgs = r.messages;
+  ex.mh = msgs.map(m => sig(m));
+  ex.sysSig = sig(r.system); ex.toolsSig = sig(r.tools);
+  ex.hasTools = Array.isArray(r.tools) && r.tools.length > 0;
+  // 1. The request whose messages are the longest prefix of ours is our parent.
+  let best = null, bestLen = -1;
+  for (const th of S.threads.values()) {
+    if (th.hasTools !== ex.hasTools) continue;
+    for (const pid of th.ids.slice(-8)) {
+      const p = S.ex.get(pid); if (!p) continue;
+      const n = p.mh.length;
+      if (n < bestLen || n > ex.mh.length) continue;
+      if (isPrefix(p.mh, ex.mh)) { best = p; bestLen = n; }
+    }
+  }
+  let th = null;
+  if (best) {
+    th = S.threads.get(best.thread); ex.prev = best.id; ex.newStart = best.mh.length; ex.rewrite = false;
+  } else {
+    // 2. Same first message: the same conversation with its history rewritten.
+    for (const t of S.threads.values()) if (t.hasTools === ex.hasTools && t.firstHash === ex.mh[0] && t.ids.length) th = t;
+    let kind = null;
+    if (!th) {
+      if (!ex.hasTools) kind = 'side';
+      else {
+        const call = matchAgent(firstPromptText(msgs));
+        if (call) {
+          kind = 'agent';
+          th = newThread('agent', ex);
+          call.thread = th.key; th.startedBy = call;
+          const cex = S.ex.get(call.exId); if (cex) markDirty(cex, 'reply');
+        } else if (!S.threads.has('main')) kind = 'main';
+        else if (S.threads.get('main').sysSig === ex.sysSig) th = S.threads.get('main');  // e.g. compaction or /clear
+        else kind = 'thread';
+      }
+      if (!th) th = newThread(kind, ex);
+    }
+    const last = S.ex.get(th.ids[th.ids.length - 1]);
+    if (last) {
+      ex.prev = last.id; ex.rewrite = true; ex.newStart = Math.min(commonPrefix(last.mh, ex.mh), msgs.length);
+    } else {
+      ex.prev = null; ex.rewrite = false;
+      let i = msgs.length - 1; while (i >= 0 && msgs[i].role !== 'assistant') i--;
+      ex.newStart = i + 1;
+    }
+  }
+  ex.thread = th.key; th.ids.push(ex.id);
+  // Tool results in the new messages pair with their calls.
+  for (const m of msgs.slice(ex.newStart)) {
+    if (m.role !== 'user') continue;
+    for (const b of blocksOf(m)) if (b.type === 'tool_result' && b.tool_use_id) { setResult(b.tool_use_id, ex, b); ex.results.push(b.tool_use_id); }
+  }
+  // Calls from the parent's reply that this request did not answer never got a result.
+  const P = S.ex.get(ex.prev);
+  if (P && P.thread === ex.thread) {
+    let changed = false;
+    for (const cid of P.calls) { const t = S.tools.get(cid); if (t && !t.result && !t.missing) { t.missing = true; changed = true; } }
+    if (changed) markDirty(P, 'head', 'reply');
+  }
+}
+
+function matchAgent(text) {
+  if (!text) return null;
+  for (let i = S.agentCalls.length - 1; i >= 0; i--) {
+    const c = S.agentCalls[i]; if (c.thread) continue;
+    const p = (c.prompt || '').trim(); if (!p) continue;
+    if (text === p || text.includes(p) || (text.length > 40 && p.includes(text))) return c;
+  }
+  return null;
+}
+
+function registerCall(ex, b, final) {
+  let t = S.tools.get(b.id);
+  if (!t) S.tools.set(b.id, t = { id: b.id });
+  Object.assign(t, { name: b.name, input: b.input, callEx: ex.id });
+  if (!ex.calls.includes(b.id)) ex.calls.push(b.id);
+  if (final && (b.name === 'Agent' || b.name === 'Task') && !S.agentCalls.some(c => c.toolUseId === b.id))
+    S.agentCalls.push({ toolUseId: b.id, prompt: b.input?.prompt, exId: ex.id, thread: null });
+  if (t.result) t.missing = false;
+}
+function setResult(id, ex, b) {
+  let t = S.tools.get(id);
+  if (!t) S.tools.set(id, t = { id });
+  if (t.result && t.resultEx !== ex.id) return; // first arrival is the one we pair with
+  Object.assign(t, { result: b, resultEx: ex.id, resultT: ex.t, isError: !!b.is_error, missing: false, size: resultText(b).length });
+  const cex = S.ex.get(t.callEx);
+  if (cex && cex !== ex) markDirty(cex, 'head', 'reply');
+}
+
+// =====================================================================
+// Derived facts about an exchange
+// =====================================================================
+const newMsgs = ex => ex.kind === 'msg' ? ex.request.messages.slice(ex.newStart) : [];
+function toolErr(ex) {
+  for (const id of ex.calls) if (S.tools.get(id)?.isError) return true;
+  for (const id of ex.results) if (S.tools.get(id)?.isError) return true;
+  return false;
+}
+const hasError = ex => ex.errors.length > 0 || toolErr(ex);
+function toolNames(ex) {
+  const s = new Set();
+  for (const id of ex.calls) { const n = S.tools.get(id)?.name; if (n) s.add(n); }
+  for (const id of ex.results) { const n = S.tools.get(id)?.name; if (n) s.add(n); }
+  return s;
+}
+function state(ex) {
+  if (ex.errors.length) return 'error';
+  if (ex.done) return ex.resp?.aborted ? 'aborted' : 'done';
+  if (!ex.resp) return 'sending';
+  const live = [...ex.blocks].reverse().find(b => b && !b.done);
+  if (!live) return ex.blocks.length ? 'streaming' : 'sending';
+  if (live.type === 'thinking' || live.type === 'redacted_thinking') return 'thinking';
+  if (live.type === 'tool_use' || live.type === 'server_tool_use') return 'tool input…';
+  return 'streaming';
+}
+function errSummary(e) {
+  let b = e.body, msg = '';
+  if (b && typeof b === 'object') { const er = b.error || b; msg = [er.type, er.message].filter(Boolean).join(': ') || JSON.stringify(b); }
+  else if (b != null) msg = String(b);
+  const kind = { unreachable: 'upstream unreachable', http: 'HTTP ' + (e.status ?? ''), stream_error: 'stream error' }[e.kind] || e.kind;
+  return `⚠ ${kind}${msg ? ' — ' + trunc(firstLine(msg), 200) : ''}`;
+}
+function searchText(ex) {
+  if (ex.search != null) return ex.search;
+  let s = ex.method + ' ' + ex.path;
+  try {
+    s += ' ' + JSON.stringify(newMsgs(ex));
+    for (const b of ex.blocks) if (b) s += ' ' + (b.text || '') + ' ' + (b.name || '') + ' ' + (b.input ? JSON.stringify(b.input) : b.partial || '');
+    for (const e of ex.errors) s += ' ' + JSON.stringify(e.body);
+  } catch { /* ignore */ }
+  s = s.toLowerCase();
+  if (ex.done) ex.search = s;
+  return s;
+}
+
+// =====================================================================
+// Generic UI pieces: fold, long text, markdown, JSON tree, diff
+// =====================================================================
+function fold(key, def, headFn, bodyFn, cls = '') {
+  const el = h('div', { class: 'fold ' + cls });
+  const draw = () => {
+    const open = isOpen(key, def);
+    const head = h('div', { class: 'foldhead', onclick: e => { if (e.target.closest('a,button,.link')) return; e.stopPropagation(); UI.set(key, !open); draw(); } },
+      h('span', { class: 'caret' }, open ? '▾' : '▸'), typeof headFn === 'function' ? headFn() : headFn);
+    el.replaceChildren(head);
+    if (open) el.append(h('div', { class: 'foldbody' }, safe(bodyFn)));
+  };
+  draw();
+  return el;
+}
+function safe(fn) { try { return fn(); } catch (err) { console.error(err); return h('div', { class: 'bad' }, 'render error: ' + err.message); } }
+
+function longText(key, text, { lines = 15, maxChars = 4000, mono = false, md = false, cursor = false } = {}) {
+  text = String(text ?? '');
+  const all = text.split('\n');
+  const big = all.length > lines || text.length > maxChars;
+  const wrap = h('div', { class: 'lt' });
+  const draw = () => {
+    const open = isOpen(key, false);
+    let shown = text;
+    if (big && !open) { shown = all.slice(0, lines).join('\n'); if (shown.length > maxChars) shown = shown.slice(0, maxChars); }
+    const content = md ? h('div', { class: 'md', html: mdRender(shown) }) : h('pre', { class: mono ? 'mono' : 'prose' }, shown);
+    if (cursor) (content.lastElementChild || content).append(h('span', { class: 'cursor' }));
+    wrap.replaceChildren(content);
+    if (big) wrap.append(h('button', { class: 'more', onclick: e => { e.stopPropagation(); UI.set(key, !open); draw(); } },
+      open ? 'show less' : `show all (${exact(all.length)} lines, ${fmtBytes(utf8len(text))})`));
+  };
+  draw();
+  return wrap;
+}
+
+// Minimal Markdown (D12): escapes all HTML first, then headings, lists, code, bold, italic, links.
+function mdInline(s) {
+  return s.split(/(`[^`]+`)/).map(part => {
+    if (/^`[^`]+`$/.test(part)) return `<code>${esc(part.slice(1, -1))}</code>`;
+    let t = esc(part);
+    t = t.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, (m, a, u) => `<a href="${u}" target="_blank" rel="noopener noreferrer">${a}</a>`);
+    t = t.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>').replace(/__([^_]+)__/g, '<strong>$1</strong>');
+    t = t.replace(/(^|[^*\w])\*([^*\s][^*]*?)\*(?!\w)/g, '$1<em>$2</em>').replace(/(^|[^_\w])_([^_\s][^_]*?)_(?!\w)/g, '$1<em>$2</em>');
+    return t;
+  }).join('');
+}
+function mdRender(src) {
+  const lines = String(src).split('\n'); const out = []; let i = 0, list = null;
+  const close = () => { if (list) { out.push(`</${list}>`); list = null; } };
+  const special = /^\s*(```|~~~|#{1,6}\s|[-*+]\s|\d+[.)]\s)/;
+  while (i < lines.length) {
+    const l = lines[i];
+    const fence = l.match(/^\s*(```|~~~)/);
+    if (fence) {
+      close(); const code = []; i++;
+      while (i < lines.length && !lines[i].trim().startsWith(fence[1])) code.push(lines[i++]);
+      i++; out.push(`<pre class="code"><code>${esc(code.join('\n'))}</code></pre>`); continue;
+    }
+    const hd = l.match(/^(#{1,6})\s+(.*)$/);
+    if (hd) { close(); const n = Math.min(hd[1].length + 2, 5); out.push(`<h${n}>${mdInline(hd[2])}</h${n}>`); i++; continue; }
+    const li = l.match(/^\s*([-*+]|\d+[.)])\s+(.*)$/);
+    if (li) {
+      const t = /\d/.test(li[1]) ? 'ol' : 'ul';
+      if (list !== t) { close(); out.push(`<${t}>`); list = t; }
+      out.push(`<li>${mdInline(li[2])}</li>`); i++; continue;
+    }
+    if (!l.trim()) { close(); i++; continue; }
+    close();
+    const para = [l]; i++;
+    while (i < lines.length && lines[i].trim() && !special.test(lines[i])) para.push(lines[i++]);
+    out.push(`<p>${para.map(mdInline).join('<br>')}</p>`);
+  }
+  close();
+  return out.join('');
+}
+
+function jsonTree(key, value, openDepth = 2) {
+  return h('div', { class: 'json' }, copyBtn(() => JSON.stringify(value, null, 2)), jnode(key, value, 0, undefined, openDepth));
+}
+function jnode(key, v, depth, name, openDepth) {
+  const keyEl = name !== undefined ? [h('span', { class: 'jk' }, JSON.stringify(String(name))), ': '] : [];
+  if (v === null || typeof v !== 'object') return h('div', { class: 'jrow' }, keyEl, jprim(key, v));
+  const isArr = Array.isArray(v); const entries = isArr ? v.map((x, i) => [i, x]) : Object.entries(v);
+  const [o, c] = isArr ? ['[', ']'] : ['{', '}'];
+  if (!entries.length) return h('div', { class: 'jrow' }, keyEl, o + c);
+  const el = h('div');
+  const draw = () => {
+    const open = isOpen(key, depth < openDepth);
+    el.replaceChildren(h('div', { class: 'jrow jtog', onclick: e => { e.stopPropagation(); UI.set(key, !open); draw(); } },
+      h('span', { class: 'caret' }, open ? '▾' : '▸'), keyEl, o,
+      open ? '' : [h('span', { class: 'jcount' }, ` ${entries.length} ${isArr ? (entries.length === 1 ? 'item' : 'items') : (entries.length === 1 ? 'key' : 'keys')} `), c]));
+    if (open) {
+      const kids = h('div', { class: 'jkids' });
+      const lim = isOpen(key + '#all', false) ? entries.length : 300;
+      for (const [k, x] of entries.slice(0, lim)) kids.append(jnode(key + '/' + k, x, depth + 1, isArr ? undefined : k, openDepth));
+      if (entries.length > lim) kids.append(h('button', { class: 'more', onclick: e => { e.stopPropagation(); UI.set(key + '#all', true); draw(); } }, `show ${entries.length - lim} more`));
+      el.append(kids, h('div', { class: 'jrow' }, c));
+    }
+  };
+  draw();
+  return el;
+}
+function jprim(key, v) {
+  if (typeof v === 'string') {
+    if (v.length <= 160 && !v.includes('\n')) return h('span', { class: 'js' }, JSON.stringify(v));
+    const el = h('span', { class: 'js' });
+    const draw = () => {
+      const open = isOpen(key, false);
+      el.replaceChildren(open ? JSON.stringify(v) : JSON.stringify(v.slice(0, 160)).slice(0, -1) + '…"',
+        ' ', h('button', { class: 'more', onclick: e => { e.stopPropagation(); UI.set(key, !open); draw(); } }, open ? 'clip' : `${fmtChars(v.length)} ▸`));
+    };
+    draw();
+    return el;
+  }
+  if (typeof v === 'number') return h('span', { class: 'jn' }, String(v));
+  return h('span', { class: 'jb' }, String(v));
+}
+
+function diffLines(a, b) {
+  const A = String(a).split('\n'), B = String(b).split('\n');
+  let p = 0; while (p < A.length && p < B.length && A[p] === B[p]) p++;
+  let s = 0; while (s < A.length - p && s < B.length - p && A[A.length - 1 - s] === B[B.length - 1 - s]) s++;
+  const a2 = A.slice(p, A.length - s), b2 = B.slice(p, B.length - s);
+  const ops = A.slice(0, p).map(x => ({ t: 'c', s: x }));
+  const n = a2.length, m = b2.length;
+  if (n * m > 4e6) { a2.forEach(x => ops.push({ t: 'd', s: x })); b2.forEach(x => ops.push({ t: 'a', s: x })); }
+  else {
+    const dp = Array.from({ length: n + 1 }, () => new Uint32Array(m + 1));
+    for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--)
+      dp[i][j] = a2[i] === b2[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+    let i = 0, j = 0;
+    while (i < n && j < m) {
+      if (a2[i] === b2[j]) { ops.push({ t: 'c', s: a2[i] }); i++; j++; }
+      else if (dp[i + 1][j] >= dp[i][j + 1]) ops.push({ t: 'd', s: a2[i++] });
+      else ops.push({ t: 'a', s: b2[j++] });
+    }
+    while (i < n) ops.push({ t: 'd', s: a2[i++] });
+    while (j < m) ops.push({ t: 'a', s: b2[j++] });
+  }
+  B.slice(B.length - s).forEach(x => ops.push({ t: 'c', s: x }));
+  return ops;
+}
+function diffView(ops, ctx = 3) {
+  const el = h('div', { class: 'diff' });
+  const keep = new Uint8Array(ops.length);
+  ops.forEach((o, i) => { if (o.t !== 'c') for (let k = Math.max(0, i - ctx); k <= Math.min(ops.length - 1, i + ctx); k++) keep[k] = 1; });
+  let gap = 0;
+  ops.forEach((o, i) => {
+    if (!keep[i]) { gap++; return; }
+    if (gap) { el.append(h('div', { class: 'gap' }, `… ${gap} unchanged line${gap > 1 ? 's' : ''}`)); gap = 0; }
+    el.append(h('div', { class: o.t }, o.s));
+  });
+  if (gap) el.append(h('div', { class: 'gap' }, `… ${gap} unchanged line${gap > 1 ? 's' : ''}`));
+  return el;
+}
+
+// =====================================================================
+// Links between cards
+// =====================================================================
+function exLink(id, label) {
+  return h('a', { class: 'link', onclick: e => { e.preventDefault(); e.stopPropagation(); gotoEx(id); } }, label || '#' + id);
+}
+function gotoEx(id, open = true) {
+  const ex = S.ex.get(id);
+  if (!ex) { toast(`#${id} is no longer in the buffer`); return; }
+  if (!visible(ex)) { F.force.add(id); applyVisibility(ex); }
+  if (open && !ex.expanded) toggleCard(ex, true);
+  setFocus(ex);
+  ex.dom.card.scrollIntoView({ block: 'start' });
+  ex.dom.card.classList.remove('flash'); void ex.dom.card.offsetWidth; ex.dom.card.classList.add('flash');
+}
+
+// =====================================================================
+// Message vocabulary rendering
+// =====================================================================
+function label(icon, text, ...rest) { return h('div', { class: 'mlabel' }, `${icon} ${text}`, rest); }
+
+function mediaEl(b) {
+  const src = b.source || {};
+  const size = src.data ? fmtBytes(Math.floor(src.data.length * 3 / 4)) : src.url ? src.url : '';
+  return h('div', { class: 'msg k-media' }, `🖼 ${b.type}`, src.media_type ? ` · ${src.media_type}` : '', size ? ` · ${size}` : '', src.type ? ` · ${src.type}` : '');
+}
+
+function renderMessages(ex, msgs, offset, mode) {
+  const list = h('div', { class: 'msgs' });
+  // For the history view, results are found in the same request.
+  const local = new Map();
+  if (mode === 'history') for (const m of ex.request.messages) for (const b of blocksOf(m)) if (b.type === 'tool_result') local.set(b.tool_use_id, b);
+  const localCalls = new Set();
+  for (const m of msgs) if (m.role === 'assistant') for (const b of blocksOf(m)) if (b.type === 'tool_use') localCalls.add(b.id);
+  if (!msgs.length) list.append(h('div', { class: 'muted' }, 'no new messages'));
+  msgs.forEach((m, i) => {
+    const idx = offset + i, base = `${ex.id}:${mode}:${idx}`;
+    if (m.role === 'assistant') {
+      if (mode === 'new' && ex.prev && idx === ex.newStart && !ex.rewrite && S.ex.has(ex.prev)) {
+        list.append(h('div', { class: 'msg k-echo' }, '🤖 the previous reply, from ', exLink(ex.prev), ' (shown there)'));
+        return;
+      }
+      blocksOf(m).forEach((b, bi) => list.append(assistantBlock(ex, b, `${base}:${bi}`, { local, mode })));
+    } else {
+      blocksOf(m).forEach((b, bi) => list.append(...[].concat(userBlock(ex, b, `${base}:${bi}`, mode, localCalls))));
+    }
+  });
+  return list;
+}
+
+function userBlock(ex, b, key, mode, localCalls) {
+  if (b.type === 'text') {
+    return splitReminders(b.text || '').map((p, pi) => p.k === 'prompt'
+      ? h('div', { class: 'msg k-prompt' }, label('👤', 'Prompt'), longText(`${key}:${pi}`, p.text, { lines: 40 }))
+      : fold(`${key}:${pi}`, false, () => [h('span', { class: 'mlabel', style: 'margin:0' }, '🔔 Reminder'), h('span', { class: 'sumtxt muted' }, trunc(firstLine(p.text), 140)), h('span', { class: 'faint' }, fmtChars(p.text.length))],
+        () => longText(`${key}:${pi}:t`, p.text, { lines: 40 }), 'msg k-reminder'));
+  }
+  if (b.type === 'tool_result') {
+    const t = S.tools.get(b.tool_use_id) || {};
+    const err = !!b.is_error, text = resultText(b);
+    const name = t.name || '?', arg = mainArg(t.name, t.input);
+    const nlines = text ? text.split('\n').length : 0;
+    const status = err ? span('bad', '✗ error') : span('ok', '✓');
+    if (mode === 'history' && localCalls.has(b.tool_use_id))
+      return h('div', { class: 'msg k-result' + (err ? ' err' : ''), 'data-tool': name }, h('span', { class: 'muted' }, `⚙ result for ▶ ${name}${arg ? ' · ' + trunc(arg, 60) : ''} `), status, h('span', { class: 'faint' }, ' (shown beside its call above)'));
+    if (mode === 'new' && t.callEx && t.callEx !== ex.id && S.ex.has(t.callEx)) {
+      // Primary view is the call's card; here it is a compact reference.
+      return fold(key, false, () => [h('span', { class: 'mlabel', style: 'margin:0' }, '⚙ Result'), h('b', null, name), arg ? h('span', { class: 'mono muted sumtxt' }, trunc(arg, 80)) : '', status,
+        h('span', { class: 'faint' }, `${nlines} line${nlines === 1 ? '' : 's'}`), h('span', null, '↖ from ', exLink(t.callEx))],
+        () => longText(key + ':r', text || '(empty)', { lines: 10, mono: true }), 'msg k-result' + (err ? ' err' : ''));
+    }
+    // The call is not in the buffer: show the pair here.
+    return pairEl(ex, { id: b.tool_use_id, name: t.name || '(call not in buffer)', input: t.input, done: true }, key, { result: b, exId: ex.id });
+  }
+  if (b.type === 'image' || b.type === 'document') return mediaEl(b);
+  return fold(key, false, [`▫ ${b.type}`], () => jsonTree(key + ':j', b, 2), 'msg k-other');
+}
+
+function assistantBlock(ex, b, key, { local, mode, live } = {}) {
+  if (!b) return '';
+  if (b.type === 'text') return h('div', { class: 'msg k-model' }, label('🤖', 'Model'), longText(key, b.text || '', { md: true, lines: 60, maxChars: 12000, cursor: live && !b.done }));
+  if (b.type === 'thinking') {
+    const txt = b.thinking || '';
+    return fold(key, false, () => [h('span', { class: 'mlabel', style: 'margin:0' }, '💭 thinking'), h('span', { class: 'faint' }, fmtChars(txt.length)), live && !b.done ? h('span', { class: 'cursor' }) : ''],
+      () => longText(key + ':t', txt || '(empty — the thinking text was not returned)', { lines: 40 }), 'msg k-thinking');
+  }
+  if (b.type === 'redacted_thinking') return h('div', { class: 'msg k-thinking' }, '💭 redacted');
+  if (b.type === 'tool_use') {
+    const lr = local?.get(b.id);
+    return pairEl(ex, b, key, lr ? { result: lr, exId: null } : null, live);
+  }
+  return fold(key, false, [`▫ ${b.type}`, b.name ? ' · ' + b.name : ''], () => jsonTree(key + ':j', b, 2), 'msg k-other');
+}
+
+function inputView(key, input, partial, live) {
+  if (input === undefined || (input && typeof input === 'object' && '_partial_json' in input)) {
+    const pj = input?._partial_json ?? partial ?? '';
+    return h('div', null, h('pre', { class: 'mono' }, pj || '…', live ? h('span', { class: 'cursor' }) : ''));
+  }
+  if (!input || typeof input !== 'object') return jsonTree(key + ':ij', input, 2);
+  const kv = h('div', { class: 'kv' });
+  for (const [k, v] of Object.entries(input)) {
+    kv.append(h('span', { class: 'k' }, k + ':'),
+      typeof v === 'string' ? longText(`${key}:in:${k}`, v, { lines: 8, maxChars: 1500, mono: true })
+        : h('span', { class: 'mono' }, trunc(JSON.stringify(v), 300)));
+  }
+  return h('div', null, kv, fold(key + ':ij', false, [h('span', { class: 'faint' }, 'input JSON')], () => jsonTree(key + ':ijt', input, 2)));
+}
+
+function pairEl(ex, b, key, localRes, live) {
+  const t = S.tools.get(b.id) || {};
+  let res = localRes;
+  if (!res && t.result) res = { result: t.result, exId: t.resultEx, t: t.resultT };
+  const err = !!res?.result?.is_error;
+  const name = b.name || t.name || '?';
+  const call = S.agentCalls.find(c => c.toolUseId === b.id && c.thread);
+  const th = call && S.threads.get(call.thread);
+  const left = h('div', { class: 'pcall' },
+    h('div', { class: 'phead' }, `▶ ${name}`, th && th.ids.length ? h('span', { class: 'sub' }, exLink(th.ids[0], `↘ thread ${th.name}`)) : ''),
+    inputView(key, b.input, b.partial, live && !b.done));
+  let right;
+  if (res) {
+    const callEx = S.ex.get(t.callEx);
+    const delay = res.t && callEx?.resp?.tEnd ? res.t - callEx.resp.tEnd : null;
+    right = h('div', { class: 'pres' },
+      h('div', { class: 'phead' }, '⚙ result', err ? span('bad', '✗ error') : span('ok', '✓'),
+        res.exId && res.exId !== ex.id ? h('span', { class: 'sub' }, '(in ', exLink(res.exId), delay != null ? `, +${fmtDur(delay)}` : '', ')') : ''),
+      resultBody(key + ':res', res.result));
+  } else if (t.missing) right = h('div', { class: 'pres' }, h('div', { class: 'waiting' }, '✗ no result received'));
+  else right = h('div', { class: 'pres' }, h('div', { class: 'waiting' }, b.done || ex.done ? '⏳ waiting for result' : '… call still streaming'));
+  const hl = F.tools.has(name);
+  return h('div', { class: 'pair' + (err ? ' err' : '') + (hl ? ' hl' : ''), 'data-tool': name }, left, right);
+}
+
+function resultBody(key, block) {
+  const c = block?.content;
+  const parts = [];
+  const text = resultText(block);
+  if (Array.isArray(c)) for (const x of c) if (x.type === 'image' || x.type === 'document') parts.push(mediaEl(x));
+  parts.unshift(text ? longText(key, Array.isArray(c) ? c.filter(x => x.type === 'text').map(x => x.text).join('\n') || text : text, { lines: 10, maxChars: 3000, mono: true }) : h('span', { class: 'faint' }, '(empty)'));
+  return parts;
+}
+
+// =====================================================================
+// Cards
+// =====================================================================
+const feed = $('#feed');
+
+function addCard(ex) {
+  const card = h('article', { class: 'card kind-' + ex.kind + (ex.fresh ? ' fresh' : ''), 'data-id': ex.id });
+  ex.dom = { card, head: h('div', { class: 'row head' }), newRow: h('div', { class: 'row newrow' }), reply: h('div', { class: 'row replyrow' }),
+    err: h('div', { class: 'errbanner' }), body: h('div', { class: 'body' }), secs: {} };
+  card.append(ex.dom.head, ex.dom.newRow, ex.dom.reply, ex.dom.err, ex.dom.body);
+  card.addEventListener('click', e => {
+    if (e.target.closest('a,button,input,.body,.link')) return;
+    if (window.getSelection()?.toString()) return;
+    setFocus(ex); toggleCard(ex);
+  });
+  ex.expanded = isOpen(`${ex.id}:card`, false);
+  renderRows(ex);
+  if (ex.expanded) renderBody(ex);
+  const vis = visible(ex);
+  card.hidden = !vis;
+  withAnchor(() => feed.prepend(card));
+  if (vis && ex.fresh && window.scrollY > 40) { S.pending++; updatePill(); }
+  if (ex.fresh) setTimeout(() => card.classList.remove('fresh'), 1700);
+}
+
+function toggleCard(ex, force) {
+  ex.expanded = force ?? !ex.expanded;
+  UI.set(`${ex.id}:card`, ex.expanded);
+  renderRows(ex);
+  if (ex.expanded) renderBody(ex); else { ex.dom.body.replaceChildren(); ex.dom.secs = {}; }
+}
+
+function renderRows(ex) {
+  const d = ex.dom;
+  d.card.classList.toggle('haserr', hasError(ex));
+  d.card.classList.toggle('expanded', !!ex.expanded);
+  d.head.replaceChildren(...headRow(ex));
+  if (ex.kind === 'msg') {
+    d.newRow.replaceChildren(h('span', { class: 'rowlab' }, 'NEW'), h('span', { class: 'sumrow' }, newSummary(ex)));
+    d.reply.replaceChildren(h('span', { class: 'rowlab' }, 'REPLY'), h('span', { class: 'sumrow' }, replySummary(ex)));
+  }
+  d.err.replaceChildren(...ex.errors.map(e => h('div', null, errSummary(e))));
+}
+
+function threadTag(th) { return th ? h('span', { class: 'ttag', style: `--tc:${th.color}` }, th.name) : ''; }
+
+function headRow(ex) {
+  const out = [h('span', { class: 'caret' }, ex.expanded ? '▾' : '▸'), h('span', { class: 'id' }, '#' + ex.id), span('num', fmtTime(ex.t), new Date(ex.t).toISOString())];
+  const st = state(ex);
+  const status = ex.resp?.status;
+  const lat = (ex.resp?.tEnd ?? Date.now()) - ex.t;
+  if (ex.kind === 'msg') {
+    const th = S.threads.get(ex.thread);
+    out.push(threadTag(th));
+    if (th?.startedBy && th.ids[0] === ex.id) out.push(h('span', { class: 'faint' }, exLink(th.startedBy.exId, `↖ started by #${th.startedBy.exId}`)));
+    out.push(span('num', shortModel(modelOf(ex)), modelOf(ex)));
+  } else {
+    out.push(h('span', { class: 'ttag', style: `--tc:${NEUTRAL}` }, ex.kind === 'generic' ? 'unrecognised API' : 'other'), h('span', { class: 'mono' }, `${ex.method} ${ex.path}`));
+  }
+  if (status) out.push(span('chip ' + (status >= 400 ? 'badc' : 'okc'), String(status), ex.resp.reason || ''));
+  out.push(span('num', fmtDur(lat), `${exact(Math.round(lat))} ms total`));
+  const u = ex.resp?.usage;
+  if (ex.kind === 'msg' && u) {
+    const tin = tokIn(u);
+    out.push(span('num', `${fmtTok(tin)}/${fmtTok(u.output_tokens || 0)}`,
+      `input ${exact(u.input_tokens || 0)} · cache read ${exact(u.cache_read_input_tokens || 0)} · cache write ${exact(u.cache_creation_input_tokens || 0)} · output ${exact(u.output_tokens || 0)}`));
+    if (u.cache_read_input_tokens || u.cache_creation_input_tokens)
+      out.push(span('num faint', `cache ${fmtTok(u.cache_read_input_tokens || 0)}r/${fmtTok(u.cache_creation_input_tokens || 0)}w`));
+    const c = costOf(ex);
+    out.push(span('num', fmtCost(c), c == null ? `no price for ${modelOf(ex)}` : `$${c.toFixed(6)}`));
+  }
+  if (ex.resp?.stop_reason) out.push(span('num', ex.resp.stop_reason));
+  out.push(span('chip ' + (st === 'error' ? 'badc' : st === 'done' ? 'state-done' : st === 'aborted' ? 'warnc' : 'state-live'), st === 'sending' || st === 'streaming' || st === 'thinking' ? (st === 'streaming' ? '⏳ streaming…' : st === 'thinking' ? '💭 thinking…' : '⏳ sending…') : st));
+  if (ex.kind === 'msg') {
+    const P = S.ex.get(ex.prev);
+    if (P && (P.sysSig !== ex.sysSig || P.toolsSig !== ex.toolsSig))
+      out.push(span('chip warnc', 'Δ ' + [P.sysSig !== ex.sysSig && 'system', P.toolsSig !== ex.toolsSig && 'tools'].filter(Boolean).join('+'), 'changed since #' + P.id));
+    if (ex.rewrite) out.push(span('chip warnc', '⚠ history rewritten'));
+    if (ex.calls.length) out.push(span('num', `${ex.calls.length} tool${ex.calls.length > 1 ? 's' : ''}`));
+  }
+  return out;
+}
+
+function newSummary(ex) {
+  const prompts = [], results = [];
+  let reminders = 0, media = 0, assistants = 0;
+  for (const m of newMsgs(ex)) {
+    if (m.role === 'assistant') { assistants++; continue; }
+    for (const b of blocksOf(m)) {
+      if (b.type === 'text') for (const p of splitReminders(b.text || '')) { if (p.k === 'prompt') prompts.push(p.text); else reminders++; }
+      else if (b.type === 'tool_result') results.push(b);
+      else if (b.type === 'image' || b.type === 'document') media++;
+    }
+  }
+  const out = [];
+  if (prompts.length) out.push(h('span', { class: 'sumtxt' }, `👤 "${trunc(prompts.map(firstLine).join(' ⏎ '), 140)}"`));
+  if (results.length) {
+    const items = results.slice(0, 6).map(b => {
+      const n = S.tools.get(b.tool_use_id)?.name || '?';
+      return h('span', { class: b.is_error ? 'bad' : '' }, `${n} ${b.is_error ? '✗' : '✓'}`);
+    });
+    const list = []; items.forEach((it, i) => { if (i) list.push(', '); list.push(it); });
+    out.push(h('span', null, `⚙ ${results.length} result${results.length > 1 ? 's' : ''}: `, list, results.length > 6 ? ` +${results.length - 6}` : ''));
+  }
+  if (reminders) out.push(h('span', { class: 'muted sum-reminder' }, `🔔 ${reminders} reminder${reminders > 1 ? 's' : ''}`));
+  if (media) out.push(h('span', { class: 'muted' }, `🖼 ${media}`));
+  if (!out.length) out.push(h('span', { class: 'faint' }, assistants ? '(only the previous reply)' : '—'));
+  return out;
+}
+
+function replySummary(ex) {
+  const out = [];
+  const blocks = ex.blocks.filter(Boolean);
+  const st = state(ex);
+  const live = !ex.done;
+  const text = blocks.find(b => b.type === 'text' && b.text);
+  const think = blocks.filter(b => b.type === 'thinking' || b.type === 'redacted_thinking');
+  if (think.length) {
+    const n = think.reduce((a, b) => a + (b.thinking || '').length, 0);
+    out.push(h('span', { class: 'muted sum-thinking' }, think.some(b => b.type === 'redacted_thinking') && !n ? '💭 redacted' : `💭 ${fmtChars(n)}`));
+  }
+  if (text) out.push(h('span', { class: 'sumtxt' }, `🤖 "${trunc(firstLine(text.text).replace(/\*\*|__|`/g, ''), 160)}"`, live && st === 'streaming' && !text.done ? h('span', { class: 'cursor' }) : ''));
+  for (const b of blocks.filter(b => b.type === 'tool_use')) {
+    const t = S.tools.get(b.id) || {};
+    const arg = mainArg(b.name, b.input, b.partial);
+    const mark = t.result ? (t.isError ? ' ✗' : ' ✓') : t.missing ? ' ∅' : b.done ? ' ⏳' : ' …';
+    out.push(h('span', { class: 'tchip' + (t.isError ? ' err' : ''), title: `${b.name} ${arg}` }, `▶ ${b.name}`, arg ? h('span', { class: 'arg' }, '· ' + arg) : '', mark));
+  }
+  if (!out.length) out.push(h('span', { class: 'faint' }, ex.errors.length ? 'no reply' : live ? '…' : '(empty)'));
+  return out;
+}
+
+// --- expanded body ---------------------------------------------------
+function section(ex, name, def, acc, titleFn, bodyFn) {
+  const key = `${ex.id}:sec:${name}`;
+  const el = h('section', { class: 'sec ' + acc });
+  const draw = () => {
+    const open = isOpen(key, def);
+    el.classList.toggle('open', open);
+    el.replaceChildren(h('div', { class: 'sechead', onclick: e => { if (e.target.closest('a,button,.link')) return; UI.set(key, !open); draw(); } },
+      h('span', { class: 'caret' }, open ? '▾' : '▸'), safe(titleFn)));
+    if (open) el.append(h('div', { class: 'secbody' }, safe(bodyFn)));
+  };
+  draw();
+  ex.dom.secs[name] = draw;
+  return el;
+}
+const SECTION_DEFAULTS = { system: true, tools: false, history: false, new: true, reply: true, changes: false, stats: false, raw: false };
+
+function setAllSections(ex, open) {
+  for (const n of Object.keys(SECTION_DEFAULTS)) UI.set(`${ex.id}:sec:${n}`, open);
+}
+
+function renderBody(ex) {
+  const b = ex.dom.body;
+  ex.dom.secs = {};
+  const tb = h('div', { class: 'toolbar' },
+    h('button', { onclick: e => { e.stopPropagation(); setAllSections(ex, true); renderBody(ex); } }, 'Expand all'),
+    h('button', { onclick: e => { e.stopPropagation(); setAllSections(ex, false); renderBody(ex); } }, 'Collapse all'));
+  const secs = [];
+  if (ex.kind === 'msg') {
+    const r = ex.request;
+    const P = S.ex.get(ex.prev);
+    const sysTxt = systemText(r.system);
+    secs.push(section(ex, 'system', SECTION_DEFAULTS.system, 'acc-system',
+      () => [h('span', { class: 't' }, 'System instructions'), h('span', { class: 'hint' }, fmtBytes(utf8len(sysTxt))),
+        typeof r.system === 'string' ? span('tag', 'string') : Array.isArray(r.system) ? span('tag', `${r.system.length} blocks`) : span('tag', 'none'),
+        P && P.sysSig !== ex.sysSig ? span('chip warnc', 'Δ changed') : ''],
+      () => renderSystem(ex)));
+    const tools = Array.isArray(r.tools) ? r.tools : [];
+    const same = P && P.toolsSig === ex.toolsSig;
+    secs.push(section(ex, 'tools', SECTION_DEFAULTS.tools, 'acc-tools',
+      () => [h('span', { class: 't' }, `Tool definitions (${tools.length})`), same ? h('span', { class: 'hint' }, '· same as ', exLink(P.id)) : '',
+        P && !same ? span('chip warnc', 'Δ changed') : '', h('span', { class: 'hint' }, fmtBytes(utf8len(JSON.stringify(tools))))],
+      () => renderTools(ex, tools, same ? P : null)));
+    secs.push(section(ex, 'history', SECTION_DEFAULTS.history, 'acc-history',
+      () => [h('span', { class: 't' }, `Conversation so far (${ex.newStart} message${ex.newStart === 1 ? '' : 's'})`)],
+      () => ex.newStart ? renderMessages(ex, r.messages.slice(0, ex.newStart), 0, 'history') : h('div', { class: 'muted' }, 'nothing before this request')));
+    const nm = newMsgs(ex);
+    secs.push(section(ex, 'new', SECTION_DEFAULTS.new, 'acc-new',
+      () => [h('span', { class: 't' }, `New in this request (${nm.length})`), P ? h('span', { class: 'hint' }, 'since ', exLink(P.id)) : h('span', { class: 'hint' }, 'first request of the thread')],
+      () => renderMessages(ex, nm, ex.newStart, 'new')));
+    secs.push(section(ex, 'reply', SECTION_DEFAULTS.reply, 'acc-reply',
+      () => [h('span', { class: 't' }, 'Reply'), h('span', { class: 'hint' }, `${ex.blocks.filter(Boolean).length} block(s)`), ex.resp?.stop_reason ? span('tag', ex.resp.stop_reason) : '', !ex.done ? span('chip state-live', state(ex)) : ''],
+      () => renderReply(ex)));
+    secs.push(section(ex, 'changes', SECTION_DEFAULTS.changes, 'acc-changes',
+      () => [h('span', { class: 't' }, 'Changes since previous request'), h('span', { class: 'hint' }, changesHint(ex))],
+      () => renderChanges(ex)));
+  }
+  secs.push(section(ex, 'stats', SECTION_DEFAULTS.stats, 'acc-stats',
+    () => [h('span', { class: 't' }, 'Stats'), h('span', { class: 'hint' }, ex.resp?.usage ? `${fmtTok(tokIn(ex.resp.usage))} in · ${fmtTok(ex.resp.usage.output_tokens || 0)} out · ${fmtCost(costOf(ex))}` : '')],
+    () => renderStats(ex)));
+  secs.push(section(ex, 'raw', ex.kind !== 'msg' ? true : SECTION_DEFAULTS.raw, 'acc-raw',
+    () => [h('span', { class: 't' }, 'Raw'), h('span', { class: 'hint' }, `request ${fmtBytes(ex.reqBytes)} · response ${fmtBytes(ex.resp?.respBytes ?? 0)}`)],
+    () => renderRaw(ex)));
+  b.replaceChildren(tb, ...secs);
+}
+
+function systemText(s) {
+  if (s == null) return '';
+  if (typeof s === 'string') return s;
+  if (Array.isArray(s)) return s.map(b => b.text ?? JSON.stringify(b)).join('\n\n');
+  return JSON.stringify(s, null, 2);
+}
+
+function renderSystem(ex) {
+  const s = ex.request.system;
+  if (s == null) return h('div', { class: 'muted' }, 'no system instructions');
+  if (typeof s === 'string') return longText(`${ex.id}:sys`, s, { lines: 15 });
+  if (!Array.isArray(s)) return jsonTree(`${ex.id}:sysj`, s);
+  return s.map((b, i) => h('div', { class: 'sysblock' },
+    h('div', { style: 'margin-bottom:3px;display:flex;gap:6px' }, span('tag', `block ${i + 1} · ${b.type}`),
+      b.cache_control ? span('tag', 'cache_control: ' + (b.cache_control.type || '') + (b.cache_control.ttl ? ' ' + b.cache_control.ttl : '')) : '',
+      span('faint', fmtBytes(utf8len(b.text || '')))),
+    b.type === 'text' ? longText(`${ex.id}:sys:${i}`, b.text || '', { lines: 15 }) : jsonTree(`${ex.id}:sys:${i}:j`, b)));
+}
+
+function renderTools(ex, tools, sameAs) {
+  const list = () => tools.map((t, i) => {
+    const key = `${ex.id}:tool:${i}`;
+    const desc = t.description || '';
+    return fold(key, false, () => [h('b', null, t.name || t.type), h('span', { class: 'muted sumtxt' }, trunc(firstLine(desc), 140)), t.type && t.type !== 'custom' && !t.input_schema ? span('tag', t.type) : ''],
+      () => [desc ? longText(key + ':d', desc, { lines: 20 }) : '',
+        t.input_schema ? [h('div', { class: 'faint', style: 'margin:6px 0 2px' }, 'input schema'), jsonTree(key + ':s', t.input_schema, 2)] : jsonTree(key + ':j', t, 2)]);
+  });
+  if (!tools.length) return h('div', { class: 'muted' }, 'no tools in this request');
+  if (sameAs) return [h('div', { class: 'muted' }, 'Identical to the tools of ', exLink(sameAs.id), '.'),
+    fold(`${ex.id}:tools:anyway`, false, [h('span', { class: 'faint' }, 'show the list anyway')], list)];
+  return list();
+}
+
+function renderReply(ex) {
+  const out = [];
+  const blocks = ex.blocks.filter(Boolean);
+  for (const e of ex.errors) out.push(h('div', { class: 'errbanner', style: 'margin:0 0 6px' }, errSummary(e)));
+  if (!blocks.length) out.push(h('div', { class: 'muted' }, ex.done ? '(no content)' : '⏳ waiting for the model…'));
+  const msgs = h('div', { class: 'msgs' });
+  blocks.forEach((b, i) => msgs.append(assistantBlock(ex, b, `${ex.id}:reply:${i}`, { live: !ex.done })));
+  out.push(msgs);
+  if (ex.resp?.aborted) out.push(h('div', { class: 'warnbox' }, 'The agent closed the connection before the reply finished.'));
+  return out;
+}
+
+// --- changes ---------------------------------------------------------
+function msgSummaryLine(m) {
+  const parts = blocksOf(m).map(b => b.type === 'text' ? trunc(firstLine(stripReminders(b.text || '')) || '[reminder]', 90)
+    : b.type === 'tool_use' ? `▶ ${b.name}` : b.type === 'tool_result' ? `⚙ result ${b.tool_use_id?.slice(-6)}` : `[${b.type}]`);
+  return `${m.role}: ${parts.join(' | ')}`;
+}
+function changesHint(ex) {
+  const P = S.ex.get(ex.prev);
+  if (!P) return ex.prev ? 'previous request evicted' : 'first request of the thread';
+  const bits = [ex.rewrite ? '⚠ history rewritten' : `+${ex.mh.length - P.mh.length} appended`];
+  if (P.sysSig !== ex.sysSig) bits.push('system Δ');
+  if (P.toolsSig !== ex.toolsSig) bits.push('tools Δ');
+  if (paramChanges(P, ex).length) bits.push('params Δ');
+  if (headerChanges(P, ex).length) bits.push('headers Δ');
+  return 'vs #' + P.id + ' · ' + bits.join(' · ');
+}
+const PARAM_SKIP = new Set(['messages', 'system', 'tools']);
+function paramChanges(P, ex) {
+  const a = P.request, b = ex.request, out = [];
+  for (const k of new Set([...Object.keys(a), ...Object.keys(b)])) {
+    if (PARAM_SKIP.has(k)) continue;
+    const x = JSON.stringify(a[k]), y = JSON.stringify(b[k]);
+    if (x !== y) out.push([k, x, y]);
+  }
+  return out;
+}
+const HDRS = ['anthropic-beta', 'anthropic-version', 'user-agent'];
+const hget = (hs, n) => (hs.find(([k]) => k.toLowerCase() === n) || [])[1];
+function headerChanges(P, ex) { return HDRS.map(n => [n, hget(P.headers, n), hget(ex.headers, n)]).filter(([, a, b]) => a !== b); }
+
+function renderChanges(ex) {
+  const P = S.ex.get(ex.prev);
+  if (!P) return h('div', { class: 'muted' }, ex.prev ? `The previous request (#${ex.prev}) has been evicted.` : 'First request of this thread — nothing to compare.');
+  const out = [h('div', { class: 'muted', style: 'margin-bottom:6px' }, 'Compared with ', exLink(P.id), ', the previous request of thread ', threadTag(S.threads.get(ex.thread)), '.')];
+  // messages
+  const m = h('div', { class: 'chg' }, h('div', { class: 'lbl' }, 'messages'));
+  if (!ex.rewrite) m.append(h('div', { class: 'ok' }, `+${ex.mh.length - P.mh.length} appended (${ex.mh.length} total)`));
+  else {
+    const kept = commonPrefix(P.mh, ex.mh);
+    m.append(h('div', { class: 'warnbox' }, `⚠ history rewritten: the first ${kept} of ${P.mh.length} previous messages are kept; now ${ex.mh.length} messages. (compaction, an edited retry, or truncation)`));
+    m.append(diffView(diffLines(P.request.messages.map(msgSummaryLine).join('\n'), ex.request.messages.map(msgSummaryLine).join('\n')), 2));
+  }
+  out.push(m);
+  // system
+  const s = h('div', { class: 'chg' }, h('div', { class: 'lbl' }, 'system'));
+  if (P.sysSig === ex.sysSig) s.append(h('div', { class: 'muted' }, 'unchanged'));
+  else s.append(diffView(diffLines(systemText(P.request.system), systemText(ex.request.system))));
+  out.push(s);
+  // tools
+  const t = h('div', { class: 'chg' }, h('div', { class: 'lbl' }, 'tools'));
+  if (P.toolsSig === ex.toolsSig) t.append(h('div', { class: 'muted' }, 'unchanged'));
+  else {
+    const byName = arr => new Map((arr || []).map(x => [x.name || x.type, x]));
+    const A = byName(P.request.tools), B = byName(ex.request.tools);
+    const added = [...B.keys()].filter(k => !A.has(k)), removed = [...A.keys()].filter(k => !B.has(k));
+    const changed = [...B.keys()].filter(k => A.has(k) && sig(A.get(k)) !== sig(B.get(k)));
+    if (added.length) t.append(h('div', { class: 'ok' }, 'added: ' + added.join(', ')));
+    if (removed.length) t.append(h('div', { class: 'bad' }, 'removed: ' + removed.join(', ')));
+    for (const k of changed) t.append(fold(`${ex.id}:chg:tool:${k}`, false, [h('b', null, k), h('span', { class: 'warn' }, 'changed')],
+      () => diffView(diffLines(JSON.stringify(stripCC(A.get(k)), null, 2), JSON.stringify(stripCC(B.get(k)), null, 2)))));
+    if (!added.length && !removed.length && !changed.length) t.append(h('div', { class: 'muted' }, 'same tools; only the order or cache markers changed'));
+  }
+  out.push(t);
+  // params
+  const pc = paramChanges(P, ex);
+  const p = h('div', { class: 'chg' }, h('div', { class: 'lbl' }, 'params'));
+  if (!pc.length) p.append(h('div', { class: 'muted' }, 'unchanged (' + Object.keys(ex.request).filter(k => !PARAM_SKIP.has(k)).join(', ') + ')'));
+  else p.append(h('table', { class: 't' }, h('tr', null, h('th', null, 'field'), h('th', null, 'before'), h('th', null, 'after')),
+    pc.map(([k, a, b]) => h('tr', null, h('td', { class: 'mono' }, k), h('td', { class: 'mono' }, trunc(a ?? '—', 300)), h('td', { class: 'mono' }, trunc(b ?? '—', 300))))));
+  out.push(p);
+  // headers
+  const hc = headerChanges(P, ex);
+  const hd = h('div', { class: 'chg' }, h('div', { class: 'lbl' }, 'headers'));
+  if (!hc.length) hd.append(h('div', { class: 'muted' }, 'unchanged (' + HDRS.join(', ') + ')'));
+  else hd.append(h('table', { class: 't' }, h('tr', null, h('th', null, 'header'), h('th', null, 'before'), h('th', null, 'after')),
+    hc.map(([k, a, b]) => h('tr', null, h('td', { class: 'mono' }, k), h('td', { class: 'mono' }, a ?? '—'), h('td', { class: 'mono' }, b ?? '—')))));
+  out.push(hd);
+  return out;
+}
+
+// --- stats & raw -----------------------------------------------------
+function renderStats(ex) {
+  const u = ex.resp?.usage || {};
+  const cp = costParts(modelOf(ex), ex.resp?.usage);
+  const row = (k, v, c, title) => h('tr', null, h('td', null, k), h('td', { class: 'n', title }, v), h('td', { class: 'n' }, c ?? ''));
+  const r = ex.resp || {};
+  const rel = t => t != null ? t - ex.t : null;
+  return h('div', { style: 'display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px' },
+    h('div', null, h('table', { class: 't' }, h('tr', null, h('th', null, 'tokens'), h('th', { class: 'n' }, 'count'), h('th', { class: 'n' }, 'cost')),
+      row('input', fmtTok(u.input_tokens || 0), cp && fmtCost(cp.input), exact(u.input_tokens || 0)),
+      row('cache read', fmtTok(u.cache_read_input_tokens || 0), cp && fmtCost(cp.cache_read), exact(u.cache_read_input_tokens || 0)),
+      row('cache write', fmtTok(u.cache_creation_input_tokens || 0), cp && fmtCost(cp.cache_write), exact(u.cache_creation_input_tokens || 0)),
+      row('output', fmtTok(u.output_tokens || 0), cp && fmtCost(cp.output), exact(u.output_tokens || 0)),
+      row(h('b', null, 'total'), '', h('b', null, cp ? fmtCost(cp.total) : '—'))),
+      !ex.resp?.usage ? h('div', { class: 'faint' }, 'no usage reported') :
+        !cp ? h('div', { class: 'faint' }, `no price for model ${modelOf(ex) || '?'} (prices as of ${S.pricesAsOf})`) : ''),
+    h('div', null, h('table', { class: 't' }, h('tr', null, h('th', null, 'timing'), h('th', { class: 'n' }, 'from send')),
+      row('response headers', fmtDur(rel(r.tStart))), row('time to first byte', fmtDur(rel(r.tFirstByte))),
+      row('time to first token', fmtDur(rel(r.tFirstToken))), row('total', fmtDur(rel(r.tEnd))))),
+    h('div', null, h('table', { class: 't' }, h('tr', null, h('th', null, 'size'), h('th', { class: 'n' }, '')),
+      row('request', fmtBytes(ex.reqBytes), null, exact(ex.reqBytes) + ' bytes'), row('response', fmtBytes(r.respBytes ?? 0), null, exact(r.respBytes ?? 0) + ' bytes'),
+      ex.kind === 'msg' ? row('messages', exact(ex.request.messages.length)) : '')));
+}
+
+function headersTable(hs) {
+  return h('table', { class: 't mono' }, (hs || []).map(([k, v]) => h('tr', null, h('td', null, k), h('td', null, v))));
+}
+function renderRaw(ex) {
+  const k = `${ex.id}:raw`;
+  const r = ex.resp || {};
+  const reqText = () => typeof ex.request === 'string' ? ex.request : JSON.stringify(ex.request, null, 2);
+  const out = [
+    fold(k + ':rqh', false, () => [h('b', null, 'Request headers'), h('span', { class: 'faint' }, '(credentials masked)'), copyBtn(() => (ex.headers || []).map(([a, b]) => `${a}: ${b}`).join('\n'))], () => headersTable(ex.headers)),
+    fold(k + ':rqj', false, () => [h('b', null, 'Request body'), h('span', { class: 'faint' }, fmtBytes(ex.reqBytes)), copyBtn(reqText)],
+      () => ex.request == null ? h('div', { class: 'muted' }, '(empty)') : typeof ex.request === 'object' ? jsonTree(k + ':rqjt', ex.request, 1) : longText(k + ':rqjs', ex.request, { lines: 40, mono: true })),
+    fold(k + ':rsh', false, () => [h('b', null, 'Response headers'), r.status ? h('span', { class: 'faint' }, `${r.status} ${r.reason || ''}`) : '', copyBtn(() => (r.headers || []).map(([a, b]) => `${a}: ${b}`).join('\n'))], () => r.headers ? headersTable(r.headers) : h('div', { class: 'muted' }, 'no response yet')),
+    fold(k + ':rsb', false, () => [h('b', null, r.json ? 'Response JSON' : 'Raw response (SSE)'), h('span', { class: 'faint' }, fmtBytes(r.respBytes ?? 0)), r.rawTruncated ? span('warn', 'truncated') : '', copyBtn(() => r.raw || '')],
+      () => !ex.done ? h('div', { class: 'muted' }, 'available when the response ends') : r.json ? jsonTree(k + ':rsj', r.json, 2) : longText(k + ':rss', r.raw || '(empty)', { lines: 40, maxChars: 20000, mono: true })),
+  ];
+  ex.errors.forEach((e, i) => out.push(fold(`${k}:err:${i}`, true, () => [h('b', { class: 'bad' }, `Error: ${e.kind}`), e.status ? span('faint', String(e.status)) : ''],
+    () => typeof e.body === 'object' && e.body ? jsonTree(`${k}:errj:${i}`, e.body, 3) : h('pre', { class: 'mono' }, String(e.body ?? '')))));
+  return out;
+}
+
+// =====================================================================
+// Visibility, filters, sidebar
+// =====================================================================
+function visible(ex) {
+  if (F.force.has(ex.id)) return true;
+  if (ex.kind === 'nonmsg' && !F.showNonMsg) return false;
+  if (ex.kind === 'msg') { const th = S.threads.get(ex.thread); if (th && F.groups.get(th.group) === false) return false; }
+  if (F.errorsOnly && !hasError(ex)) return false;
+  if (F.tools.size) { if (ex.kind !== 'msg') return false; const n = toolNames(ex); if (![...F.tools].some(t => n.has(t))) return false; }
+  if (F.search && !searchText(ex).includes(F.search)) return false;
+  return true;
+}
+function applyVisibility(ex) { if (ex.dom) ex.dom.card.hidden = !visible(ex); }
+function applyFilters() {
+  withAnchor(() => { for (const ex of S.ex.values()) applyVisibility(ex); });
+  document.body.classList.toggle('hide-thinking', !$('#kThinking').checked);
+  document.body.classList.toggle('hide-reminders', !$('#kReminders').checked);
+  $('#fErrors').checked = F.errorsOnly;
+  $('#errBtn').classList.toggle('active', F.errorsOnly);
+  // highlight matching pairs in open cards
+  let css = [...F.tools].map(t => `.pair[data-tool="${CSS.escape(t)}"]`).join(',');
+  $('#hlStyle').textContent = css ? css + '{outline:2px solid var(--acc-call);outline-offset:1px}' : '';
+  S.sideDirty = true; scheduleFlush();
+}
+
+function toolStats() {
+  const m = new Map();
+  for (const t of S.tools.values()) {
+    if (!t.name || t.callEx == null) continue;
+    let s = m.get(t.name); if (!s) m.set(t.name, s = { name: t.name, calls: 0, errors: 0, size: 0, nres: 0, time: 0, ntime: 0 });
+    s.calls++;
+    if (t.isError) s.errors++;
+    if (t.result) { s.size += t.size || 0; s.nres++; const c = S.ex.get(t.callEx); if (c?.resp?.tEnd && t.resultT) { s.time += t.resultT - c.resp.tEnd; s.ntime++; } }
+  }
+  return [...m.values()].sort((a, b) => b.calls - a.calls || a.name.localeCompare(b.name));
+}
+
+function toggleTool(name) { if (F.tools.has(name)) F.tools.delete(name); else F.tools.add(name); applyFilters(); }
+
+let lastSideSig = '';
+function renderSidebar() {
+  const groups = new Map();
+  for (const th of S.threads.values()) {
+    let g = groups.get(th.group);
+    if (!g) groups.set(th.group, g = { group: th.group, name: th.kind === 'side' ? 'side calls' : th.name, color: th.color, n: 0, th });
+    g.n += th.ids.length;
+  }
+  const ts = toolStats();
+  const nonmsg = [...S.ex.values()].filter(e => e.kind === 'nonmsg').length;
+  const sigStr = JSON.stringify([[...groups.values()].map(g => [g.group, g.n, F.groups.get(g.group)]), ts.map(t => [t.name, t.calls, t.errors]), [...F.tools], nonmsg]);
+  $('#nonMsgCount').textContent = nonmsg ? `(${nonmsg})` : '';
+  if (sigStr === lastSideSig) return;
+  lastSideSig = sigStr;
+  const dyn = $('#sideDyn');
+  const thr = [h('h4', null, 'Threads')];
+  if (!groups.size) thr.push(h('div', { class: 'faint' }, 'none yet'));
+  for (const g of groups.values()) {
+    const cb = h('input', { type: 'checkbox', checked: F.groups.get(g.group) !== false, onchange: e => { F.groups.set(g.group, e.target.checked); applyFilters(); } });
+    const startLink = g.th.startedBy ? h('span', { class: 'faint' }, exLink(g.th.startedBy.exId, '↖')) : '';
+    thr.push(h('label', null, cb, h('span', { class: 'ttag', style: `--tc:${g.color}` }, g.name), h('span', { class: 'faint' }, String(g.n)), startLink));
+  }
+  const tl = [h('h4', null, 'Tools', F.tools.size ? h('a', { class: 'link', style: 'float:right;text-transform:none', onclick: () => { F.tools.clear(); applyFilters(); } }, 'clear') : '')];
+  if (!ts.length) tl.push(h('div', { class: 'faint' }, 'none yet'));
+  for (const t of ts) tl.push(h('div', { class: 'toolrow' + (F.tools.has(t.name) ? ' sel' : ''), onclick: () => toggleTool(t.name), title: 'filter the feed to requests using ' + t.name },
+    h('span', null, t.name), h('span', { class: 'num' }, String(t.calls), t.errors ? h('span', { class: 'bad' }, ` ⚠${t.errors}`) : '')));
+  dyn.replaceChildren(...thr, ...tl);
+}
+
+// =====================================================================
+// Header bar, stats panel, chart
+// =====================================================================
+function totals() {
+  let req = 0, tin = 0, tout = 0, cost = 0, unknown = 0, apiErr = 0;
+  for (const ex of S.ex.values()) {
+    if (ex.errors.length) apiErr++;
+    if (ex.kind !== 'msg') continue;
+    req++;
+    const u = ex.resp?.usage; if (!u) continue;
+    tin += tokIn(u); tout += u.output_tokens || 0;
+    const c = costOf(ex); if (c == null) { if (ex.done) unknown++; } else cost += c;
+  }
+  let toolErr = 0; for (const t of S.tools.values()) if (t.isError && S.ex.has(t.callEx ?? t.resultEx)) toolErr++;
+  return { req, tin, tout, cost, unknown, apiErr, toolErr };
+}
+
+function renderHeader() {
+  const T = totals();
+  const inflight = [...S.ex.values()].filter(e => !e.done && !(e.errors.length && e.errors.some(x => x.kind === 'unreachable')));
+  $('#inflight').textContent = inflight.length ? `· ${inflight.length} in flight (${fmtDur(Date.now() - Math.min(...inflight.map(e => e.t)))})` : '';
+  $('#totals').replaceChildren('Requests ', h('b', null, String(T.req)), ' · Tokens ', h('b', { title: exact(T.tin) }, fmtTok(T.tin)), ' in / ', h('b', { title: exact(T.tout) }, fmtTok(T.tout)), ' out · Cost ',
+    h('b', { title: T.unknown ? `${T.unknown} request(s) with an unpriced model are not included` : `$${T.cost.toFixed(6)}` }, fmtCost(T.cost) + (T.unknown ? ' + ?' : '')));
+  const n = T.apiErr + T.toolErr;
+  const eb = $('#errBtn');
+  eb.textContent = `Errors ${n}${n ? ' ⚠' : ''}` + (n ? ` (${T.apiErr} API · ${T.toolErr} tool)` : '');
+  eb.classList.toggle('has', n > 0);
+  $('#empty').hidden = S.ex.size > 0;
+  $('#evictNote').textContent = S.evicted ? `${S.evicted} older request${S.evicted > 1 ? 's' : ''} evicted from the buffer` : '';
+}
+
+let statsOpen = false, lastStats = 0;
+function renderStatsPanel(force) {
+  if (!statsOpen) return;
+  if (!force && Date.now() - lastStats < 1000) return;
+  lastStats = Date.now();
+  const p = $('#statsPanel');
+  const T = totals();
+  const msgs = [...S.ex.values()].filter(e => e.kind === 'msg').sort((a, b) => a.id - b.id);
+  const agg = keyFn => {
+    const m = new Map();
+    for (const ex of msgs) {
+      const k = keyFn(ex); let s = m.get(k); if (!s) m.set(k, s = { k, n: 0, tin: 0, tout: 0, cost: 0, unknown: false });
+      s.n++; const u = ex.resp?.usage; if (u) { s.tin += tokIn(u); s.tout += u.output_tokens || 0; }
+      const c = costOf(ex); if (c == null) { if (u) s.unknown = true; } else s.cost += c;
+    }
+    return [...m.values()];
+  };
+  const aggTable = (title, rows, nameFn) => h('div', null, h('h3', null, title), h('table', { class: 't' },
+    h('tr', null, h('th', null, ''), h('th', { class: 'n' }, 'requests'), h('th', { class: 'n' }, 'in'), h('th', { class: 'n' }, 'out'), h('th', { class: 'n' }, 'cost')),
+    rows.map(r => h('tr', null, h('td', null, nameFn(r.k)), h('td', { class: 'n' }, String(r.n)), h('td', { class: 'n', title: exact(r.tin) }, fmtTok(r.tin)),
+      h('td', { class: 'n', title: exact(r.tout) }, fmtTok(r.tout)), h('td', { class: 'n' }, r.unknown && !r.cost ? '—' : fmtCost(r.cost) + (r.unknown ? ' + ?' : ''))))));
+  const threadName = k => { const th = S.threads.get(k); return th ? (th.kind === 'side' ? threadTag({ ...th, name: 'side calls' }) : threadTag(th)) : k; };
+  const ts = toolStats();
+  const toolTable = h('div', null, h('h3', null, 'Tool usage (click to filter)'), ts.length ? h('table', { class: 't' },
+    h('tr', null, h('th', null, 'tool'), h('th', { class: 'n' }, 'calls'), h('th', { class: 'n' }, 'errors'), h('th', { class: 'n' }, 'avg result'), h('th', { class: 'n' }, 'avg call→result')),
+    ts.map(t => h('tr', { class: 'click' + (F.tools.has(t.name) ? ' sel' : ''), onclick: () => { toggleTool(t.name); renderStatsPanel(true); } },
+      h('td', null, t.name), h('td', { class: 'n' }, String(t.calls)), h('td', { class: 'n' + (t.errors ? ' bad' : '') }, t.errors ? '✗ ' + t.errors : '0'),
+      h('td', { class: 'n' }, t.nres ? fmtBytes(Math.round(t.size / t.nres)) : '—'), h('td', { class: 'n' }, t.ntime ? fmtDur(t.time / t.ntime) : '—')))) : h('div', { class: 'faint' }, 'no tool calls yet'));
+  const groupKey = ex => { const th = S.threads.get(ex.thread); return th?.kind === 'side' ? 'side:1' : ex.thread; };
+  p.replaceChildren(
+    h('div', null, h('h3', null, 'Session'), h('table', { class: 't' },
+      h('tr', null, h('td', null, 'message requests'), h('td', { class: 'n' }, String(T.req))),
+      h('tr', null, h('td', null, 'tokens in / out'), h('td', { class: 'n' }, `${fmtTok(T.tin)} / ${fmtTok(T.tout)}`)),
+      h('tr', null, h('td', null, 'cost'), h('td', { class: 'n' }, fmtCost(T.cost) + (T.unknown ? ` + ? (${T.unknown} unpriced)` : ''))),
+      h('tr', null, h('td', null, 'errors'), h('td', { class: 'n' + (T.apiErr + T.toolErr ? ' bad' : '') }, `${T.apiErr} API · ${T.toolErr} tool`))),
+      h('div', { class: 'faint', style: 'margin-top:4px' }, `prices as of ${S.pricesAsOf}; unknown models show —`)),
+    aggTable('By thread', agg(groupKey), threadName),
+    aggTable('By model', agg(ex => shortModel(modelOf(ex))), k => k),
+    toolTable,
+    h('div', null, h('h3', null, 'Input tokens per request'), barChart(msgs.slice(-150), ex => ex.resp?.usage ? tokIn(ex.resp.usage) : 0, fmtTok)),
+    h('div', null, h('h3', null, 'Cost per request'), barChart(msgs.slice(-150), ex => costOf(ex) ?? 0, fmtCost)));
+}
+
+function barChart(items, valFn, fmt) {
+  const wrap = h('div', { class: 'chart' });
+  if (!items.length) { wrap.append(h('div', { class: 'faint' }, 'no data yet')); return wrap; }
+  const W = Math.max(280, Math.min(($('#statsPanel').clientWidth || 600) / 2 - 40, 900)), H = 110, padL = 0, padB = 16, padT = 14;
+  const vals = items.map(valFn), max = Math.max(...vals, 1e-9);
+  const slot = (W - padL) / items.length, bw = Math.max(1, slot - 2);
+  const NS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(NS, 'svg');
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`); svg.setAttribute('height', H);
+  const el = (n, a) => { const e = document.createElementNS(NS, n); for (const [k, v] of Object.entries(a)) e.setAttribute(k, v); return e; };
+  const base = H - padB;
+  items.forEach((ex, i) => {
+    const v = vals[i], bh = Math.max(v > 0 ? 1 : 0, (v / max) * (base - padT));
+    const x = padL + i * slot, y = base - bh, r = Math.min(4, bw / 2, bh);
+    const hit = el('rect', { class: 'hit', x, y: padT, width: slot, height: base - padT });
+    const bar = el('path', { class: 'bar', d: `M${x},${base} V${y + r} Q${x},${y} ${x + r},${y} H${x + bw - r} Q${x + bw},${y} ${x + bw},${y + r} V${base} Z` });
+    hit.addEventListener('mousemove', e => showTip(e, `#${ex.id} · ${threadNameText(ex)} · ${fmt(v)}`));
+    hit.addEventListener('mouseleave', hideTip);
+    hit.addEventListener('click', () => gotoEx(ex.id));
+    svg.append(hit, bar);
+  });
+  svg.append(el('line', { class: 'axis', x1: 0, x2: W, y1: base + .5, y2: base + .5 }));
+  const t1 = el('text', { class: 'axl', x: 0, y: 10 }); t1.textContent = 'max ' + fmt(max); svg.append(t1);
+  const t2 = el('text', { class: 'axl', x: 0, y: H - 3 }); t2.textContent = '#' + items[0].id; svg.append(t2);
+  const t3 = el('text', { class: 'axl', x: W, y: H - 3, 'text-anchor': 'end' }); t3.textContent = '#' + items[items.length - 1].id; svg.append(t3);
+  wrap.append(svg);
+  return wrap;
+}
+const threadNameText = ex => S.threads.get(ex.thread)?.name || ex.kind;
+function showTip(e, text) { const t = $('#tip'); t.textContent = text; t.hidden = false; t.style.left = (e.clientX + 12) + 'px'; t.style.top = (e.clientY + 12) + 'px'; }
+function hideTip() { $('#tip').hidden = true; }
+
+// =====================================================================
+// Rendering loop: deltas are coalesced per animation frame
+// =====================================================================
+function markDirty(ex, ...what) {
+  let s = S.dirty.get(ex.id); if (!s) S.dirty.set(ex.id, s = new Set());
+  for (const w of what) s.add(w);
+  scheduleFlush();
+}
+let flushQueued = false;
+function scheduleFlush() { if (!flushQueued) { flushQueued = true; requestAnimationFrame(flush); } }
+function flush() {
+  flushQueued = false;
+  const dirty = S.dirty; S.dirty = new Map();
+  withAnchor(() => {
+    for (const [id, what] of dirty) {
+      const ex = S.ex.get(id); if (!ex?.dom) continue;
+      renderRows(ex);
+      applyVisibility(ex);
+      if (!ex.expanded) continue;
+      if (what.has('all')) { renderBody(ex); continue; }
+      if (what.has('reply')) ex.dom.secs.reply?.();
+      if (what.has('stats')) ex.dom.secs.stats?.();
+    }
+  });
+  renderHeader();
+  if (S.sideDirty) { S.sideDirty = false; renderSidebar(); }
+  renderStatsPanel();
+}
+
+// Keep what the reader is looking at in place when content above it changes.
+function withAnchor(fn) {
+  if (window.scrollY < 40) { fn(); return; }
+  const top = $('#top').offsetHeight;
+  let anchor = null, before = 0;
+  for (const c of feed.children) {
+    if (c.hidden) continue;
+    const r = c.getBoundingClientRect();
+    if (r.bottom > top + 4) { anchor = c; before = r.top; break; }
+  }
+  fn();
+  if (anchor && anchor.isConnected && !anchor.hidden) {
+    const after = anchor.getBoundingClientRect().top;
+    if (Math.abs(after - before) > 0.5) window.scrollBy(0, after - before);
+  }
+}
+
+function updatePill() {
+  const p = $('#pill');
+  p.hidden = S.pending === 0;
+  p.textContent = `↑ ${S.pending} new request${S.pending === 1 ? '' : 's'}`;
+}
+function toTop() { window.scrollTo({ top: 0 }); S.pending = 0; updatePill(); }
+
+// =====================================================================
+// Keyboard & controls
+// =====================================================================
+const visibleCards = () => [...feed.children].filter(c => !c.hidden);
+function setFocus(ex) {
+  if (S.focus != null) S.ex.get(S.focus)?.dom?.card.classList.remove('focused');
+  S.focus = ex?.id ?? null;
+  ex?.dom?.card.classList.add('focused');
+}
+function focusMove(dir) {
+  const cards = visibleCards(); if (!cards.length) return;
+  let i = cards.findIndex(c => +c.dataset.id === S.focus);
+  if (i < 0) { const top = $('#top').offsetHeight; i = cards.findIndex(c => c.getBoundingClientRect().bottom > top); i = Math.max(0, i) - (dir > 0 ? 1 : 0); if (dir < 0) i++; }
+  const j = Math.max(0, Math.min(cards.length - 1, i + dir));
+  const ex = S.ex.get(+cards[j].dataset.id);
+  setFocus(ex); ex.dom.card.scrollIntoView({ block: 'nearest' });
+}
+function jumpError(dir) {
+  const cards = visibleCards().filter(c => { const ex = S.ex.get(+c.dataset.id); return ex && hasError(ex); });
+  if (!cards.length) { toast('no errors'); return; }
+  let i = cards.findIndex(c => +c.dataset.id === S.focus);
+  i = i < 0 ? (dir > 0 ? 0 : cards.length - 1) : (i + dir + cards.length) % cards.length;
+  gotoEx(+cards[i].dataset.id, false);
+}
+document.addEventListener('keydown', e => {
+  if (e.target.matches('input, textarea')) { if (e.key === 'Escape') e.target.blur(); return; }
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  const fx = S.ex.get(S.focus);
+  switch (e.key) {
+    case 'j': focusMove(1); break;
+    case 'k': focusMove(-1); break;
+    case 'o': case 'Enter': if (fx) toggleCard(fx); break;
+    case 'Home': e.preventDefault(); toTop(); break;
+    case '/': e.preventDefault(); $('#search').focus(); break;
+    case 'e': jumpError(1); break;
+    case 'E': jumpError(-1); break;
+    default: return;
+  }
+});
+window.addEventListener('scroll', () => { if (window.scrollY < 40 && S.pending) { S.pending = 0; updatePill(); } }, { passive: true });
+$('#pill').onclick = toTop;
+$('#errBtn').onclick = () => { F.errorsOnly = !F.errorsOnly; applyFilters(); };
+$('#fErrors').onchange = e => { F.errorsOnly = e.target.checked; applyFilters(); };
+$('#fNonMsg').onchange = e => { F.showNonMsg = e.target.checked; applyFilters(); };
+$('#kThinking').onchange = applyFilters;
+$('#kReminders').onchange = applyFilters;
+let searchT = 0;
+$('#search').oninput = e => { clearTimeout(searchT); searchT = setTimeout(() => { F.search = e.target.value.trim().toLowerCase(); F.force.clear(); applyFilters(); }, 150); };
+$('#statsBtn').onclick = () => { statsOpen = !statsOpen; $('#statsPanel').hidden = !statsOpen; $('#statsBtn').textContent = statsOpen ? 'Stats ▴' : 'Stats ▾'; renderStatsPanel(true); };
+$('#expandAll').onclick = () => withAnchor(() => { for (const ex of S.ex.values()) if (!ex.dom.card.hidden && !ex.expanded) toggleCard(ex, true); });
+$('#collapseAll').onclick = () => withAnchor(() => { for (const ex of S.ex.values()) if (ex.expanded) toggleCard(ex, false); });
+document.head.append(h('style', { id: 'hlStyle' }));
+
+// theme: auto -> light -> dark
+const THEMES = ['auto', 'light', 'dark'];
+let theme = 'auto';
+try { theme = localStorage.getItem('traffic-theme') || 'auto'; } catch { /* storage unavailable */ }
+function applyTheme() {
+  if (theme === 'auto') document.documentElement.removeAttribute('data-theme'); else document.documentElement.dataset.theme = theme;
+  $('#themeBtn').textContent = '◐ ' + theme;
+}
+$('#themeBtn').onclick = () => { theme = THEMES[(THEMES.indexOf(theme) + 1) % 3]; try { localStorage.setItem('traffic-theme', theme); } catch { /* ignore */ } applyTheme(); };
+applyTheme();
+
+function setHH() { document.documentElement.style.setProperty('--hh', $('#top').offsetHeight + 'px'); }
+window.addEventListener('resize', setHH); setHH();
+
+// live timers for requests in flight
+setInterval(() => {
+  let any = false;
+  for (const ex of S.ex.values()) if (!ex.done && ex.dom) { ex.dom.head.replaceChildren(...headRow(ex)); any = true; }
+  if (any || $('#inflight').textContent) renderHeader();
+}, 250);
+
+// =====================================================================
+// Connection
+// =====================================================================
+function connect() {
+  const es = new EventSource('/events');
+  const conn = $('#conn');
+  es.onopen = () => { conn.className = 'live'; conn.textContent = 'live'; };
+  es.onerror = () => { conn.className = 'down'; conn.textContent = es.readyState === 2 ? 'disconnected' : 'reconnecting…'; if (es.readyState === 2) setTimeout(connect, 2000); };
+  for (const name of ['reset', 'replay_done', 'evicted', 'exchange_start', 'response_start', 'block_start', 'block_delta', 'block_stop', 'response_end', 'exchange_error'])
+    es.addEventListener(name, e => { try { handle(name, JSON.parse(e.data)); } catch (err) { console.error('event', name, err); } });
+}
+connect();
+renderHeader();
+</script>
+</body>
+</html>
