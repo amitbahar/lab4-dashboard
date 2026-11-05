@@ -559,11 +559,21 @@ class Tap(BaseHTTPRequestHandler):
             print(f"\n[{stamp()}] <<< {reply.status} {reply.reason}", flush=True)
         self.close_connection = True
         aborted, read_error = False, None
+        # Keep the upstream's body framing, so a stream the upstream cuts off also reaches the agent
+        # as cut off: a chunked reply is re-chunked (the final 0-chunk is sent only on a clean end),
+        # and a fixed-length reply keeps its Content-Length. Body bytes are unchanged either way.
+        chunked = bool(reply.chunked)
+        length = reply.getheader("content-length")
         try:
-            self.send_response(reply.status, reply.reason)
+            # send_response_only: no proxy Server/Date headers next to the upstream's own.
+            self.send_response_only(reply.status, reply.reason)
             for name, value in resp_headers:
                 if name.lower() not in SKIP and name.lower() != "content-encoding":
                     self.send_header(name, value)
+            if chunked:
+                self.send_header("Transfer-Encoding", "chunked")
+            elif length is not None:
+                self.send_header("Content-Length", length)
             self.send_header("Connection", "close")
             self.end_headers()
         except OSError:
@@ -577,9 +587,15 @@ class Tap(BaseHTTPRequestHandler):
                     read_error = f"upstream read failed: {type(e).__name__}: {e}"
                     break
                 if not chunk:
+                    if chunked:
+                        try:
+                            self.wfile.write(b"0\r\n\r\n")  # clean end of a chunked body
+                            self.wfile.flush()
+                        except OSError:
+                            aborted = True
                     break
                 try:
-                    self.wfile.write(chunk)
+                    self.wfile.write(b"%x\r\n%s\r\n" % (len(chunk), chunk) if chunked else chunk)
                     self.wfile.flush()
                 except OSError:
                     aborted = True  # the agent hung up (e.g. interrupted)

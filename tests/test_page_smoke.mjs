@@ -83,14 +83,9 @@ test('explicit drop after completion keeps state consistent', async () => {
   assert.deepEqual(await problems(page), []);
 });
 
-// KNOWN BUG (dashboard.html): when a `reset` carries a new boot id, checkVersion() schedules
-// location.reload() 300 ms later but handle() keeps applying the rest of that replay to the
-// stale, un-reset state. The re-sent exchange_start for an id the page already holds makes
-// analyze() pick the exchange itself as its own parent and crash on `th.key` (TypeError,
-// logged via console.error) until the reload. Marked todo so it reports without failing the run.
-test('new boot id (proxy restart) makes the page reload and replay', {
-  todo: 'dashboard.html applies replay events after detecting a new boot id (TypeError in analyze)',
-}, async () => {
+// Regression: after a reset with a new boot id the page used to keep applying that replay to its
+// stale state (a re-sent exchange_start became its own parent and analyze() threw).
+test('new boot id (proxy restart) makes the page reload and replay', async () => {
   const man = manifest.multi_session;
   await showFixture(page, srv, 'multi_session');
   await page.eval(`window.__beforeRestart = 1`);

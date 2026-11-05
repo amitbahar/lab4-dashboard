@@ -363,20 +363,15 @@ class ProxyTest(unittest.TestCase):
         self.assertIn("IncompleteRead", err["body"]["message"])
         self.assertNotIn("message_stop", dict(evs)["response_end"]["raw"])
 
-    # KNOWN BUG (proxy.py Tap.relay): send_response() already adds the proxy's own
-    # `Server` and `Date`, and the upstream's `Server`/`Date` are then forwarded too, so a
-    # proxied response carries each of these headers twice.
-    @unittest.expectedFailure
+    # Regression: send_response() used to add the proxy's own Server/Date next to the upstream's.
     def test_no_duplicate_response_headers(self):
         _, hdrs, _, _ = request(self.proxy.port, "POST", "/v1/messages", body_for("plain", stream=False))
         keys = [k.lower() for k, _ in hdrs]
         self.assertEqual(sorted(k for k in set(keys) if keys.count(k) > 1), [],
                          f"duplicate response headers: {hdrs}")
 
-    # KNOWN LIMITATION (proxy.py Tap.relay): the reply is relayed with `Connection: close`
-    # framing instead of chunked encoding, so when the upstream drops a chunked stream the
-    # agent sees a clean end of body (no IncompleteRead) and cannot tell it was truncated.
-    @unittest.expectedFailure
+    # Regression: the reply used to be relayed close-delimited, so a dropped chunked stream
+    # looked like a clean end to the agent. The upstream's chunked framing is now kept.
     def test_dropped_upstream_stream_is_visible_to_client(self):
         _, _, _, err = request(self.proxy.port, "POST", "/v1/messages", body_for("DROP"))
         self.assertIsNotNone(err, "the client should see the truncated stream as an error")

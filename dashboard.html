@@ -479,12 +479,15 @@ function checkVersion(d) {
   // The proxy restarted, or dashboard.html changed on disk: this page is stale, start over.
   if (S.boot === undefined) { S.boot = d.boot; S.pageMtime = d.page_mtime; return true; }
   if (d.boot === S.boot && d.page_mtime === S.pageMtime) return true;
+  S.stale = true;  // ignore everything else this stream sends; the old state must not absorb a new proxy's replay
+  if (S.es) S.es.close();
   toast(d.boot !== S.boot ? 'proxy restarted — reloading' : 'dashboard updated — reloading');
   setTimeout(() => location.reload(), 300);
   return false;
 }
 
 function handle(name, d) {
+  if (S.stale) return;
   if (name === 'ping') { checkVersion(d); return; }
   if (name === 'reset') { if (!checkVersion(d)) return; return onReset(d); }
   if (name === 'replay_done') return onReplayDone();
@@ -613,6 +616,7 @@ function sessionRec(sid) {
 const multiSession = () => S.sessions.size > 1;
 
 function onStart(d) {
+  if (S.ex.has(d.id)) return;  // a re-sent start for an exchange we already hold (never its own parent)
   const ex = { id: d.id, t: d.t, method: d.method, path: d.path, headers: d.headers || [], request: d.request, reqBytes: d.request_bytes || 0,
     resp: null, blocks: [], errors: [], calls: [], results: [], done: false, fresh: !S.replaying, log: [], logOmitted: 0 };
   ex.kind = classify(ex);
