@@ -979,7 +979,9 @@ function addCard(ex) {
     err: h('div', { class: 'errbanner' }), body: h('div', { class: 'body' }), secs: {} };
   card.append(ex.dom.head, ex.dom.newRow, ex.dom.reply, ex.dom.err, ex.dom.body);
   card.addEventListener('click', e => {
-    if (e.target.closest('a,button,input,.body,.link')) return;
+    // A clicked element that re-rendered itself is detached by now; it was never a click on the card rows.
+    if (!e.target.isConnected || ex.dom.body.contains(e.target)) return;
+    if (e.target.closest('a,button,input,.link')) return;
     if (window.getSelection()?.toString()) return;
     setFocus(ex); toggleCard(ex);
   });
@@ -1107,7 +1109,7 @@ function section(ex, name, def, acc, titleFn, bodyFn) {
   const draw = () => {
     const open = isOpen(key, def);
     el.classList.toggle('open', open);
-    el.replaceChildren(h('div', { class: 'sechead', onclick: e => { if (e.target.closest('a,button,.link')) return; UI.set(key, !open); draw(); } },
+    el.replaceChildren(h('div', { class: 'sechead', onclick: e => { e.stopPropagation(); if (e.target.closest('a,button,.link')) return; UI.set(key, !open); draw(); } },
       h('span', { class: 'caret' }, open ? '▾' : '▸'), safe(titleFn)));
     if (open) el.append(h('div', { class: 'secbody' }, safe(bodyFn)));
   };
