@@ -539,7 +539,7 @@ function handle(name, d) {
     for (const b of ex.blocks) if (b && b.type === 'tool_use' && b.id) registerCall(ex, b, true);
     // A reply that failed or was interrupted never gets results for its calls.
     const L = lifecycle(ex);
-    if (L.s === 'failed' || L.s === 'interrupted') for (const id of ex.calls) { const t = S.tools.get(id); if (t && !t.result) t.missing = true; }
+    if (L.s === 'failed' || L.s === 'interrupted') for (const id of ex.calls) { const t = toolOf(ex, id); if (t && !t.result) t.missing = true; }
     markDirty(ex, 'rows', 'dhead', 'reply', 'stats', 'raw', 'log');
     S.sideDirty = true;
   } else if (name === 'exchange_error') {
@@ -739,7 +739,7 @@ function analyze(ex) {
   const P = S.ex.get(ex.prev);
   if (P && P.thread === ex.thread && !ex.rewrite && !ex.branch) {
     let changed = false;
-    for (const cid of P.calls) { const t = S.tools.get(cid); if (t && !t.result && !t.missing) { t.missing = true; changed = true; } }
+    for (const cid of P.calls) { const t = toolOf(P, cid); if (t && !t.result && !t.missing) { t.missing = true; changed = true; } }
     if (changed) markDirty(P, 'rows', 'reply');
   }
 }
@@ -755,27 +755,32 @@ function matchAgent(text, session) {
 }
 
 // Normalised call identity: reply tool_use.id and request tool_result.tool_use_id are the same call_id.
+// Call identity is (session, call_id): Claude Code sessions are unrelated, so the same ID in two
+// sessions is two calls. Within a session, the same ID in two threads is a collision (unresolved).
+const toolKey = (ex, id) => ex.session + '\u0001' + id;
+const toolOf = (ex, id) => S.tools.get(toolKey(ex, id));
+const agentCallOf = (ex, id) => S.agentCalls.find(c => c.toolUseId === id && c.session === ex.session && c.thread);
 function registerCall(ex, b, final) {
-  let t = S.tools.get(b.id);
-  if (!t) S.tools.set(b.id, t = { id: b.id });
+  let t = toolOf(ex, b.id);
+  if (!t) S.tools.set(toolKey(ex, b.id), t = { id: b.id });
   if (!ex.calls.includes(b.id)) ex.calls.push(b.id);
   if (t.callEx != null && t.callEx !== ex.id && S.ex.has(t.callEx)) {
     const other = S.ex.get(t.callEx);
-    if (other.session !== ex.session || other.thread !== ex.thread) { t.collision = true; markDirty(other, 'rows', 'reply'); }
+    if (other.thread !== ex.thread) { t.collision = true; markDirty(other, 'rows', 'reply'); }
     return; // the first call with this ID stays the one we pair with
   }
   Object.assign(t, { name: b.name, input: b.input, callEx: ex.id, callSession: ex.session, callThread: ex.thread });
-  if (t.result && t.resultSession !== ex.session) t.collision = true;
-  if (final && (b.name === 'Agent' || b.name === 'Task') && !S.agentCalls.some(c => c.toolUseId === b.id))
+  if (t.result && t.resultThread !== ex.thread) t.collision = true;  // a result from an unrelated thread
+  if (final && (b.name === 'Agent' || b.name === 'Task') && !S.agentCalls.some(c => c.toolUseId === b.id && c.session === ex.session))
     S.agentCalls.push({ toolUseId: b.id, prompt: b.input?.prompt, exId: ex.id, session: ex.session, thread: null });
   if (t.result) { t.missing = false; const rex = S.ex.get(t.resultEx); if (rex && rex !== ex) markDirty(rex, 'rows', 'new'); }
 }
 function setResult(id, ex, b) {
-  let t = S.tools.get(id);
-  if (!t) S.tools.set(id, t = { id });
-  if (t.callSession !== undefined && t.callSession !== ex.session) { t.collision = true; return; }
+  let t = toolOf(ex, id);
+  if (!t) S.tools.set(toolKey(ex, id), t = { id });
+  if (t.callThread !== undefined && t.callThread !== ex.thread) { t.collision = true; const c = S.ex.get(t.callEx); if (c) markDirty(c, 'rows', 'reply'); return; }
   if (t.result) return; // the first observed result origin wins; resent history does not move it
-  Object.assign(t, { result: b, resultEx: ex.id, resultT: ex.t, resultSession: ex.session, isError: !!b.is_error, missing: false, size: resultText(b).length });
+  Object.assign(t, { result: b, resultEx: ex.id, resultT: ex.t, resultSession: ex.session, resultThread: ex.thread, isError: !!b.is_error, missing: false, size: resultText(b).length });
   const cex = S.ex.get(t.callEx);
   if (cex && cex !== ex) markDirty(cex, 'rows', 'reply');
 }
@@ -785,16 +790,16 @@ function setResult(id, ex, b) {
 // =====================================================================
 const newMsgs = ex => ex.kind === 'msg' ? ex.request.messages.slice(ex.newStart) : [];
 function toolErr(ex) {
-  for (const id of ex.calls) if (S.tools.get(id)?.isError) return true;
-  for (const id of ex.results) if (S.tools.get(id)?.isError) return true;
+  for (const id of ex.calls) if (toolOf(ex, id)?.isError) return true;
+  for (const id of ex.results) if (toolOf(ex, id)?.isError) return true;
   return false;
 }
 const apiFailed = ex => ex.errors.length > 0 || (ex.resp?.status ?? 0) >= 400;
 const hasError = ex => apiFailed(ex) || toolErr(ex);
 function toolNames(ex) {
   const s = new Set();
-  for (const id of ex.calls) { const n = S.tools.get(id)?.name; if (n) s.add(n); }
-  for (const id of ex.results) { const n = S.tools.get(id)?.name; if (n) s.add(n); }
+  for (const id of ex.calls) { const n = toolOf(ex, id)?.name; if (n) s.add(n); }
+  for (const id of ex.results) { const n = toolOf(ex, id)?.name; if (n) s.add(n); }
   return s;
 }
 // Request lifecycle (§13.4). Failure takes precedence over interruption; a failed tool result never fails the exchange.
@@ -812,7 +817,7 @@ const LIFE = { sending: '⏳ Sending', streaming: '⏳ Streaming', completed: 'C
 function lifeChips(ex) {
   const L = lifecycle(ex);
   const cls = { sending: 'state-live', streaming: 'state-live', completed: 'state-done', failed: 'badc', interrupted: 'warnc' }[L.s];
-  const out = [span('chip ' + cls, LIFE[L.s] + (L.sub ? ` · ${L.sub}…` : ''), L.s === 'interrupted' ? 'the agent closed the connection before the reply ended' : '')];
+  const out = [span('chip life ' + cls, LIFE[L.s] + (L.sub ? ` · ${L.sub}…` : ''), L.s === 'interrupted' ? 'the agent closed the connection before the reply ended' : '')];
   if (L.closed) out.push(span('chip warnc', 'client closed', 'the agent also closed the connection'));
   return out;
 }
@@ -1078,14 +1083,14 @@ function userBlock(ex, b, key, mode, localCalls) {
         () => longText(`${key}:${pi}:t`, p.text, { lines: 40 }), 'msg k-reminder'));
   }
   if (b.type === 'tool_result') {
-    const t = S.tools.get(b.tool_use_id) || {};
+    const t = toolOf(ex, b.tool_use_id) || {};
     const err = !!b.is_error, text = resultText(b);
     const name = t.name || '?', arg = mainArg(t.name, t.input);
     const nlines = text ? text.split('\n').length : 0;
     const status = err ? span('bad', '✗ error') : span('ok', '✓');
     if (mode === 'history' && localCalls.has(b.tool_use_id))
       return h('div', { class: 'msg k-result' + (err ? ' err' : '') }, h('span', { class: 'muted' }, `⚙ result for ▶ ${name}${arg ? ' · ' + trunc(arg, 60) : ''} `), status, h('span', { class: 'faint' }, ' (shown beside its call above)'));
-    if (t.collision) return h('div', { class: 'msg k-result err' }, label('⚙', 'Result'), h('div', { class: 'warnbox' }, `⚠ call ID ${b.tool_use_id} was seen in more than one thread or session — not paired`), resultBody(key + ':r', b));
+    if (t.collision) return h('div', { class: 'msg k-result err' }, label('⚙', 'Result'), h('div', { class: 'warnbox' }, `⚠ call ID ${b.tool_use_id} was seen in more than one thread of this session — not paired`), resultBody(key + ':r', b));
     if (mode === 'new' && t.callEx != null && t.callEx !== ex.id && S.ex.has(t.callEx) && t.resultEx === ex.id) {
       // Primary view is the call's request; here it is a compact reference.
       return fold(key, false, () => [h('span', { class: 'mlabel', style: 'margin:0' }, '⚙ Result'), h('b', null, name), arg ? h('span', { class: 'mono muted sumtxt' }, trunc(arg, 80)) : '', status,
@@ -1093,7 +1098,10 @@ function userBlock(ex, b, key, mode, localCalls) {
         () => longText(key + ':r', text || '(empty)', { lines: 10, mono: true }), 'msg k-result' + (err ? ' err' : ''));
     }
     // The call is not available here: say why, and show the result in full.
-    const why = t.callEx == null ? 'orphan result — no call with this ID has been seen' : !S.ex.has(t.callEx) ? 'its call was evicted from the buffer' : '';
+    // "Orphan" is only certain when nothing was evicted; otherwise the call may sit in an evicted request.
+    const why = t.callEx != null && !S.ex.has(t.callEx) ? 'its call was evicted from the buffer'
+      : t.callEx == null && S.evicted ? `its call is not in the buffer — likely in one of the ${S.evicted} evicted older requests`
+      : t.callEx == null ? 'orphan result — no call with this ID has been seen' : '';
     return pairEl(ex, { id: b.tool_use_id, name: t.name || '(unknown call)', input: t.input, done: true }, key, { result: b, exId: ex.id }, false, why);
   }
   if (b.type === 'image' || b.type === 'document') return mediaEl(b);
@@ -1146,19 +1154,19 @@ function inputView(key, b, live) {
 }
 
 function pairEl(ex, b, key, localRes, live, why) {
-  const t = S.tools.get(b.id) || {};
+  const t = toolOf(ex, b.id) || {};
   let res = localRes;
   if (!res && t.result && !t.collision) res = { result: t.result, exId: t.resultEx, t: t.resultT };
   const err = !!res?.result?.is_error;
   const name = b.name || t.name || '?';
-  const call = S.agentCalls.find(c => c.toolUseId === b.id && c.thread);
+  const call = agentCallOf(ex, b.id);
   const th = call && S.threads.get(call.thread);
   const left = h('div', { class: 'pcall' },
     h('div', { class: 'phead' }, `▶ ${name}`, h('span', { class: 'cid', title: b.id }, b.id ? '…' + String(b.id).slice(-8) : ''),
       th && th.ids.length ? h('span', { class: 'sub' }, exLink(th.ids[0], `↘ thread ${th.name}`)) : ''),
     why ? h('div', { class: 'warn' }, why) : inputView(key, b, live));
   let right;
-  if (t.collision && !localRes) right = h('div', { class: 'pres' }, h('div', { class: 'warnbox' }, '⚠ unresolved: this call ID also appears in another thread or session'));
+  if (t.collision && !localRes) right = h('div', { class: 'pres' }, h('div', { class: 'warnbox' }, '⚠ unresolved: this call ID also appears in another thread of this session'));
   else if (res) {
     const callEx = S.ex.get(t.callEx);
     const delay = res.t && callEx?.resp?.tEnd ? res.t - callEx.resp.tEnd : null;
@@ -1284,7 +1292,7 @@ function newSummary(ex) {
   if (prompts.length) out.push(h('span', { class: 'sumtxt' }, `👤 "${trunc(prompts.map(firstLine).join(' ⏎ '), 140)}"`));
   if (results.length) {
     const items = results.slice(0, 6).map(b => {
-      const n = S.tools.get(b.tool_use_id)?.name || '?';
+      const n = toolOf(ex, b.tool_use_id)?.name || '?';
       return h('span', { class: b.is_error ? 'bad' : '' }, `${n} ${b.is_error ? '✗' : '✓'}`);
     });
     const list = []; items.forEach((it, i) => { if (i) list.push(', '); list.push(it); });
@@ -1308,7 +1316,7 @@ function replySummary(ex) {
   }
   if (text) out.push(h('span', { class: 'sumtxt' }, `🤖 "${trunc(firstLine(text.text).replace(/\*\*|__|`/g, ''), 160)}"`, live && !text.done ? h('span', { class: 'cursor' }) : ''));
   for (const b of blocks.filter(b => b.type === 'tool_use')) {
-    const t = S.tools.get(b.id) || {};
+    const t = toolOf(ex, b.id) || {};
     const arg = mainArg(b.name, b.input, b.partial);
     const mark = t.collision ? ' ⚠' : t.result ? (t.isError ? ' ✗' : ' ✓') : t.missing ? ' ∅' : b.done ? ' ⏳' : ' …';
     out.push(h('span', { class: 'tchip' + (t.isError ? ' err' : ''), title: `${b.name} ${arg}` }, `▶ ${b.name}`, arg ? h('span', { class: 'arg' }, '· ' + arg) : '', mark));
@@ -1457,8 +1465,8 @@ function renderTools(ex, tools, sameAs) {
 // --- reply: keyed per block, so a streaming update replaces only the block that changed ---
 function blockSig(ex, b) {
   if (!b) return '-';
-  const t = b.id ? S.tools.get(b.id) : null;
-  const call = b.id ? S.agentCalls.find(c => c.toolUseId === b.id && c.thread) : null;
+  const t = b.id ? toolOf(ex, b.id) : null;
+  const call = b.id ? agentCallOf(ex, b.id) : null;
   return [b.type, b.done ? 1 : 0, (b.text || '').length, (b.thinking || '').length, (b.partial || '').length, b.input === undefined ? 0 : 1, b.incomplete ? 1 : 0,
     t ? [t.resultEx, t.isError, t.missing, t.collision].join(',') : '', call ? call.thread : '', ex.done ? 1 : 0].join('|');
 }

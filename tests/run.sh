@@ -41,7 +41,7 @@ SUMMARY+=("proxy        $([ $rc -eq 0 ] && echo 'ok  ' || echo FAIL)  $ran tests
 CHROME=${CHROMIUM:-/usr/bin/chromium}
 if [ -x "$CHROME" ] && command -v node >/dev/null; then
   run_step "page smoke tests (node --test, headless Chromium)" "$TMP/page.log" \
-    node --test --test-reporter=tap tests/test_page_smoke.mjs
+    node --test --test-reporter=tap tests/test_page_smoke.mjs tests/test_page_ui.mjs
   rc=$?
   count() { grep -E "^# $1 [0-9]+" "$TMP/page.log" | tail -n1 | grep -Eo '[0-9]+' || echo 0; }
   [ $rc -ne 0 ] && FAILED=1
