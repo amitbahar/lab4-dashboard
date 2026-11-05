@@ -574,3 +574,20 @@ security, statistics and isolation checks still apply.
     Verify existing CLI options, offline operation, replay limits and a slow
     or closed dashboard do not alter or delay relay traffic. Confirm the
     browser network panel uses SSE only, with no polling or WebSockets.
+
+### 13.9 Additions agreed during implementation
+
+1. **Sessions.** Several Claude Code sessions can share one proxy. Every request
+   carries `x-claude-code-session-id` (and `metadata.user_id.session_id`). Group
+   threads by session first: each session has its own `main`, subagent and
+   side-call threads, parent matching never crosses sessions, and the Threads
+   filter shows one group per session. Requests without a session ID fall into
+   an "unknown session" group.
+2. **Stale pages.** `reset` and the keep-alive `ping` events carry the proxy's
+   boot ID and the modification time of `dashboard.html`. When either changes,
+   the page reloads itself, discarding view state (allowed by §13.2). During
+   development, every save of `dashboard.html` therefore resets the reader's
+   selection.
+3. **Test tooling.** Tests use only the Python standard library, Node's
+   built-ins and the system Chromium, driven over the DevTools protocol. They
+   live in `tests/` and are not needed to run the proxy.
