@@ -714,7 +714,10 @@ function analyze(ex) {
       if (!th) th = newThread(kind, ex);
     }
     const last = S.ex.get(th.ids[th.ids.length - 1]);
-    if (last) {
+    if (last && th.kind === 'side') {
+      // One-shot side calls often share an opening message: a branch, not a rewritten conversation.
+      ex.prev = last.id; ex.rewrite = false; ex.branch = true; ex.newStart = Math.min(commonPrefix(last.mh, ex.mh), msgs.length);
+    } else if (last) {
       ex.prev = last.id; ex.rewrite = true; ex.newStart = Math.min(commonPrefix(last.mh, ex.mh), msgs.length);
     } else {
       ex.prev = null; ex.rewrite = false;
@@ -730,7 +733,7 @@ function analyze(ex) {
   }
   // Calls from the parent's reply that this same-thread continuation did not answer never got a result.
   const P = S.ex.get(ex.prev);
-  if (P && P.thread === ex.thread && !ex.rewrite) {
+  if (P && P.thread === ex.thread && !ex.rewrite && !ex.branch) {
     let changed = false;
     for (const cid of P.calls) { const t = S.tools.get(cid); if (t && !t.result && !t.missing) { t.missing = true; changed = true; } }
     if (changed) markDirty(P, 'rows', 'reply');
@@ -1051,7 +1054,7 @@ function renderMessages(ex, msgs, offset, mode) {
   msgs.forEach((m, i) => {
     const idx = offset + i, base = `${ex.id}:${mode}:${idx}`;
     if (m.role === 'assistant') {
-      if (mode === 'new' && ex.prev && idx === ex.newStart && !ex.rewrite && S.ex.has(ex.prev)) {
+      if (mode === 'new' && ex.prev && idx === ex.newStart && !ex.rewrite && !ex.branch && S.ex.has(ex.prev)) {
         list.append(h('div', { class: 'msg k-echo' }, '🤖 the previous reply, from ', exLink(ex.prev), ' (shown there)'));
         return;
       }
@@ -1493,7 +1496,7 @@ function msgSummaryLine(m) {
 function changesHint(ex) {
   const P = S.ex.get(ex.prev);
   if (!P) return ex.prev ? 'previous request evicted' : 'first request of the thread';
-  const bits = [ex.rewrite ? '⚠ history rewritten' : `+${ex.mh.length - P.mh.length} appended`];
+  const bits = [ex.rewrite ? '⚠ history rewritten' : ex.branch ? `branch: shares ${ex.newStart} of ${P.mh.length} messages` : `+${ex.mh.length - P.mh.length} appended`];
   if (P.sysSig !== ex.sysSig) bits.push('system Δ');
   if (P.toolsSig !== ex.toolsSig) bits.push('tools Δ');
   if (paramChanges(P, ex).length) bits.push('params Δ');
@@ -1518,7 +1521,8 @@ function renderChanges(ex) {
   if (!P) return h('div', { class: 'muted' }, ex.prev ? `The previous request (#${ex.prev}) has been evicted.` : 'First request of this thread — nothing to compare.');
   const out = [h('div', { class: 'muted', style: 'margin-bottom:6px' }, 'Compared with ', exLink(P.id), ', the previous request of thread ', threadTag(S.threads.get(ex.thread)), '.')];
   const m = h('div', { class: 'chg' }, h('div', { class: 'lbl' }, 'messages'));
-  if (!ex.rewrite) m.append(h('div', { class: 'ok' }, `+${ex.mh.length - P.mh.length} appended (${ex.mh.length} total)`));
+  if (ex.branch) m.append(h('div', { class: 'muted' }, `an independent side call that shares its first ${ex.newStart} of ${P.mh.length} messages with `, exLink(P.id), ` (not a rewrite)`));
+  else if (!ex.rewrite) m.append(h('div', { class: 'ok' }, `+${ex.mh.length - P.mh.length} appended (${ex.mh.length} total)`));
   else {
     const kept = commonPrefix(P.mh, ex.mh);
     m.append(h('div', { class: 'warnbox' }, `⚠ history rewritten: the first ${kept} of ${P.mh.length} previous messages are kept; now ${ex.mh.length} messages. (compaction, an edited retry, or truncation)`));
